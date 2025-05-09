@@ -1,0 +1,119 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f4f7f6;
+    display: flex;
+    justify-content: center;
+    padding-top: 20px;
+}
+
+.container {
+    background-color: #fff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 600px;
+}
+
+h1 {
+    color: #333;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+.input-section {
+    margin-bottom: 20px;
+}
+
+.input-section label {
+    display: block;
+    margin-bottom: 8px;
+    color: #555;
+    font-weight: bold;
+}
+
+.input-section input[type="url"],
+.input-section input[type="text"] {
+    width: calc(100% - 22px); /* Account for padding and border */
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.keyword-entry {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.keyword-entry .keyword-input {
+    flex-grow: 1;
+    margin-right: 8px;
+}
+
+#addKeywordBtn,
+#checkRankBtn {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    display: block; /* Make checkRankBtn full width */
+    width: 100%; /* Make checkRankBtn full width */
+    margin-top: 10px;
+}
+
+#addKeywordBtn {
+    width: auto; /* Override for add keyword button */
+    background-color: #28a745;
+    margin-top: 0;
+}
+
+.remove-keyword-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#addKeywordBtn:hover,
+#checkRankBtn:hover {
+    opacity: 0.9;
+}
+
+.results-section {
+    margin-top: 30px;
+    border-top: 1px solid #eee;
+    padding-top: 20px;
+}
+
+#resultsTableContainer table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+#resultsTableContainer th,
+#resultsTableContainer td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+}
+
+#resultsTableContainer th {
+    background-color: #f9f9f9;
+    font-weight: bold;
+}
+
+#loadingMessage {
+    text-align: center;
+    color: #555;
+    font-style: italic;
+}
