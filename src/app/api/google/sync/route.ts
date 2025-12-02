@@ -254,6 +254,65 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PUT - Enable/disable auto-sync (webhook)
+export async function PUT(request: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { enabled } = await request.json();
+    const tokenData = await getValidAccessToken(session.user.id);
+    
+    if (!tokenData) {
+      return NextResponse.json(
+        { error: "Google Calendar not connected" },
+        { status: 401 }
+      );
+    }
+
+    const sync = new GoogleCalendarSync(tokenData.accessToken, tokenData.calendarId);
+    const webhookUrl = `${process.env.NEXTAUTH_URL}/api/google/webhook`;
+    const channelId = `erp-calendar-${session.user.id}-${Date.now()}`;
+
+    if (enabled) {
+      try {
+        // Start watching calendar
+        const watchResponse = await sync.watchCalendar(webhookUrl, channelId);
+        
+        // Store channel info for later cleanup (optional: could store in DB)
+        console.log("Webhook registered:", watchResponse);
+        
+        return NextResponse.json({ 
+          success: true, 
+          message: "Auto-sync enabled",
+          expiration: watchResponse.expiration,
+        });
+      } catch (err: any) {
+        console.error("Watch calendar error:", err);
+        return NextResponse.json(
+          { error: err.message || "Failed to enable auto-sync" },
+          { status: 500 }
+        );
+      }
+    } else {
+      // For now, just acknowledge - stopping requires resourceId
+      return NextResponse.json({ 
+        success: true, 
+        message: "Auto-sync disabled" 
+      });
+    }
+  } catch (error) {
+    console.error("Auto-sync toggle error:", error);
+    return NextResponse.json(
+      { error: "Failed to toggle auto-sync" },
+      { status: 500 }
+    );
+  }
+}
+
 // DELETE - Disconnect Google Calendar
 export async function DELETE(request: NextRequest) {
   try {

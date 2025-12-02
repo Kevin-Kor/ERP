@@ -51,6 +51,7 @@ interface SyncStatus {
   connected: boolean;
   calendarId: string;
   syncedEventsCount: number;
+  autoSyncEnabled?: boolean;
 }
 
 interface GoogleCalendarSyncProps {
@@ -66,6 +67,7 @@ export function GoogleCalendarSync({ onSyncComplete }: GoogleCalendarSyncProps) 
   const [syncAction, setSyncAction] = useState<string | null>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [notConfigured, setNotConfigured] = useState(false);
+  const [enablingAutoSync, setEnablingAutoSync] = useState(false);
 
   useEffect(() => {
     fetchStatus();
@@ -211,6 +213,37 @@ export function GoogleCalendarSync({ onSyncComplete }: GoogleCalendarSyncProps) 
       });
     } catch (error) {
       console.error("Calendar change error:", error);
+    }
+  }
+
+  async function handleEnableAutoSync() {
+    try {
+      setEnablingAutoSync(true);
+      const res = await fetch("/api/google/sync", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: true }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast({
+          title: "자동 동기화 활성화",
+          description: "Google Calendar 변경 시 자동으로 동기화됩니다.",
+        });
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      console.error("Enable auto-sync error:", error);
+      toast({
+        title: "자동 동기화 실패",
+        description: error.message || "자동 동기화 활성화에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setEnablingAutoSync(false);
     }
   }
 
@@ -375,6 +408,22 @@ export function GoogleCalendarSync({ onSyncComplete }: GoogleCalendarSyncProps) 
                 전체
               </Button>
             </div>
+
+            {/* Auto-sync */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEnableAutoSync}
+              disabled={enablingAutoSync}
+              className="w-full gap-2"
+            >
+              {enablingAutoSync ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {enablingAutoSync ? "활성화 중..." : "자동 동기화 활성화"}
+            </Button>
 
             {/* Disconnect */}
             <Button
