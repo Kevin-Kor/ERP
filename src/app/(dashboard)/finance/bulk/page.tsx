@@ -4,9 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -20,63 +19,64 @@ import {
   ArrowLeft,
   TrendingUp,
   TrendingDown,
-  CheckCircle2,
-  Utensils,
-  Users,
-  Car,
-  Megaphone,
-  Video,
-  MoreHorizontal,
-  Building2,
-  Briefcase,
-  Globe,
-  Sparkles,
+  Plus,
+  X,
+  Receipt,
+  Calculator,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
 
 // 지출 카테고리
 const EXPENSE_CATEGORIES = [
-  { id: "FOOD", label: "식비", icon: Utensils, color: "bg-orange-100 text-orange-700 border-orange-200" },
-  { id: "INFLUENCER_COST", label: "인플루언서 비용", icon: Users, color: "bg-pink-100 text-pink-700 border-pink-200" },
-  { id: "TRANSPORT", label: "교통비", icon: Car, color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { id: "AD_EXPENSE", label: "광고비", icon: Megaphone, color: "bg-purple-100 text-purple-700 border-purple-200" },
-  { id: "CONTENT_PRODUCTION", label: "컨텐츠 제작비", icon: Video, color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
-  { id: "OTHER_EXPENSE", label: "기타", icon: MoreHorizontal, color: "bg-gray-100 text-gray-700 border-gray-200" },
+  { id: "FOOD", label: "식비" },
+  { id: "INFLUENCER_COST", label: "인플루언서 비용" },
+  { id: "TRANSPORT", label: "교통비" },
+  { id: "AD_EXPENSE", label: "광고비" },
+  { id: "CONTENT_PRODUCTION", label: "컨텐츠 제작비" },
+  { id: "OTHER_EXPENSE", label: "기타 지출" },
 ];
 
 // 수입 카테고리
 const REVENUE_CATEGORIES = [
-  { id: "AD_REVENUE", label: "광고비", icon: Megaphone, color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  { id: "FIXED_MANAGEMENT", label: "고정 관리업체", icon: Building2, color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { id: "PROJECT_MANAGEMENT", label: "건별 관리업체", icon: Briefcase, color: "bg-indigo-100 text-indigo-700 border-indigo-200" },
-  { id: "PLATFORM_REVENUE", label: "플랫폼 수입", icon: Globe, color: "bg-violet-100 text-violet-700 border-violet-200" },
-  { id: "OTHER_REVENUE", label: "기타", icon: Sparkles, color: "bg-gray-100 text-gray-700 border-gray-200" },
+  { id: "AD_REVENUE", label: "광고비 수입" },
+  { id: "FIXED_MANAGEMENT", label: "고정 관리업체" },
+  { id: "PROJECT_MANAGEMENT", label: "건별 관리업체" },
+  { id: "PLATFORM_REVENUE", label: "플랫폼 수입" },
+  { id: "OTHER_REVENUE", label: "기타 수입" },
 ];
 
-interface CategoryAmount {
+const ALL_CATEGORIES = [
+  { group: "지출", items: EXPENSE_CATEGORIES, type: "EXPENSE" as const },
+  { group: "수입", items: REVENUE_CATEGORIES, type: "REVENUE" as const },
+];
+
+interface EntryItem {
+  id: string;
   categoryId: string;
-  amount: string;
+  categoryLabel: string;
+  type: "EXPENSE" | "REVENUE";
+  amount: number;
   memo: string;
 }
 
 export default function BulkEntryPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"EXPENSE" | "REVENUE">("EXPENSE");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   
-  const [expenseAmounts, setExpenseAmounts] = useState<CategoryAmount[]>(
-    EXPENSE_CATEGORIES.map(cat => ({ categoryId: cat.id, amount: "", memo: "" }))
-  );
-  const [revenueAmounts, setRevenueAmounts] = useState<CategoryAmount[]>(
-    REVENUE_CATEGORIES.map(cat => ({ categoryId: cat.id, amount: "", memo: "" }))
-  );
+  // 현재 입력 중인 금액들 (선택된 카테고리)
+  const [currentAmounts, setCurrentAmounts] = useState<{ id: string; amount: string; memo: string }[]>([
+    { id: crypto.randomUUID(), amount: "", memo: "" }
+  ]);
+  
+  // 모든 저장된 항목들
+  const [allEntries, setAllEntries] = useState<EntryItem[]>([]);
   
   const [saving, setSaving] = useState(false);
-  const [savedCategories, setSavedCategories] = useState<string[]>([]);
 
   // 월 옵션 생성 (최근 12개월)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -87,48 +87,100 @@ export default function BulkEntryPage() {
     return { value, label };
   });
 
-  const updateAmount = (
-    type: "EXPENSE" | "REVENUE",
-    categoryId: string,
-    field: "amount" | "memo",
-    value: string
-  ) => {
-    if (type === "EXPENSE") {
-      setExpenseAmounts(prev =>
-        prev.map(item =>
-          item.categoryId === categoryId ? { ...item, [field]: value } : item
-        )
-      );
-    } else {
-      setRevenueAmounts(prev =>
-        prev.map(item =>
-          item.categoryId === categoryId ? { ...item, [field]: value } : item
-        )
-      );
+  // 선택된 카테고리 정보
+  const getCategoryInfo = (categoryId: string) => {
+    for (const group of ALL_CATEGORIES) {
+      const found = group.items.find(item => item.id === categoryId);
+      if (found) return { ...found, type: group.type };
     }
-    // 수정 시 저장 상태 리셋
-    setSavedCategories(prev => prev.filter(id => id !== categoryId));
+    return null;
   };
 
-  const totalExpense = expenseAmounts.reduce(
-    (sum, item) => sum + (parseFloat(item.amount) || 0),
-    0
-  );
-  const totalRevenue = revenueAmounts.reduce(
+  const selectedCategoryInfo = getCategoryInfo(selectedCategory);
+
+  // 현재 카테고리 소계
+  const currentSubtotal = currentAmounts.reduce(
     (sum, item) => sum + (parseFloat(item.amount) || 0),
     0
   );
 
-  const validExpenses = expenseAmounts.filter(item => parseFloat(item.amount) > 0);
-  const validRevenues = revenueAmounts.filter(item => parseFloat(item.amount) > 0);
+  // 카테고리별 합계
+  const entriesByCategory = allEntries.reduce((acc, entry) => {
+    if (!acc[entry.categoryId]) {
+      acc[entry.categoryId] = {
+        label: entry.categoryLabel,
+        type: entry.type,
+        total: 0,
+        count: 0,
+      };
+    }
+    acc[entry.categoryId].total += entry.amount;
+    acc[entry.categoryId].count += 1;
+    return acc;
+  }, {} as Record<string, { label: string; type: "EXPENSE" | "REVENUE"; total: number; count: number }>);
 
+  // 총 지출/수입
+  const totalExpense = allEntries
+    .filter(e => e.type === "EXPENSE")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const totalRevenue = allEntries
+    .filter(e => e.type === "REVENUE")
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  // 금액 입력 추가
+  const addAmountField = () => {
+    setCurrentAmounts(prev => [
+      ...prev,
+      { id: crypto.randomUUID(), amount: "", memo: "" }
+    ]);
+  };
+
+  // 금액 입력 제거
+  const removeAmountField = (id: string) => {
+    if (currentAmounts.length <= 1) return;
+    setCurrentAmounts(prev => prev.filter(item => item.id !== id));
+  };
+
+  // 금액 업데이트
+  const updateAmount = (id: string, field: "amount" | "memo", value: string) => {
+    setCurrentAmounts(prev =>
+      prev.map(item => (item.id === id ? { ...item, [field]: value } : item))
+    );
+  };
+
+  // 현재 카테고리 항목들을 전체 목록에 추가
+  const addToEntries = () => {
+    if (!selectedCategoryInfo) return;
+
+    const validAmounts = currentAmounts.filter(item => parseFloat(item.amount) > 0);
+    if (validAmounts.length === 0) return;
+
+    const newEntries: EntryItem[] = validAmounts.map(item => ({
+      id: crypto.randomUUID(),
+      categoryId: selectedCategory,
+      categoryLabel: selectedCategoryInfo.label,
+      type: selectedCategoryInfo.type,
+      amount: parseFloat(item.amount),
+      memo: item.memo,
+    }));
+
+    setAllEntries(prev => [...prev, ...newEntries]);
+    setCurrentAmounts([{ id: crypto.randomUUID(), amount: "", memo: "" }]);
+  };
+
+  // 항목 삭제
+  const removeEntry = (id: string) => {
+    setAllEntries(prev => prev.filter(entry => entry.id !== id));
+  };
+
+  // 전체 저장
   const handleSaveAll = async () => {
-    const itemsToSave = [
-      ...validExpenses.map(item => ({ ...item, type: "EXPENSE" as const })),
-      ...validRevenues.map(item => ({ ...item, type: "REVENUE" as const })),
-    ].filter(item => !savedCategories.includes(item.categoryId));
+    // 현재 입력 중인 것도 추가
+    if (selectedCategoryInfo && currentSubtotal > 0) {
+      addToEntries();
+    }
 
-    if (itemsToSave.length === 0) {
+    if (allEntries.length === 0) {
       alert("저장할 항목이 없습니다.");
       return;
     }
@@ -136,29 +188,26 @@ export default function BulkEntryPage() {
     setSaving(true);
 
     try {
-      // 선택한 월의 1일로 날짜 설정
       const date = `${selectedMonth}-01`;
 
-      for (const item of itemsToSave) {
-        const res = await fetch("/api/transactions", {
+      for (const entry of allEntries) {
+        await fetch("/api/transactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             date,
-            type: item.type,
-            category: item.categoryId,
-            amount: parseFloat(item.amount),
+            type: entry.type,
+            category: entry.categoryId,
+            amount: entry.amount,
             paymentStatus: "COMPLETED",
-            memo: item.memo || null,
+            memo: entry.memo || null,
           }),
         });
-
-        if (res.ok) {
-          setSavedCategories(prev => [...prev, item.categoryId]);
-        }
       }
 
-      alert(`${itemsToSave.length}건이 저장되었습니다.`);
+      alert(`${allEntries.length}건이 저장되었습니다.`);
+      setAllEntries([]);
+      router.push("/finance");
     } catch (error) {
       console.error("Save error:", error);
       alert("저장 중 오류가 발생했습니다.");
@@ -167,13 +216,8 @@ export default function BulkEntryPage() {
     }
   };
 
-  const getCategoryInfo = (type: "EXPENSE" | "REVENUE", categoryId: string) => {
-    const categories = type === "EXPENSE" ? EXPENSE_CATEGORIES : REVENUE_CATEGORIES;
-    return categories.find(cat => cat.id === categoryId);
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -183,299 +227,280 @@ export default function BulkEntryPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">
-              월별 수입/지출 입력
+            <h1 className="text-2xl font-bold tracking-tight">
+              수입/지출 입력
             </h1>
-            <p className="text-muted-foreground mt-1">
-              카테고리별로 금액만 입력하세요
+            <p className="text-muted-foreground text-sm">
+              카테고리별로 금액을 입력하세요
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {monthOptions.map(option => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {monthOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* 입력 카드 */}
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            금액 입력
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* 카테고리 선택 */}
+          <div>
+            <label className="text-sm font-medium mb-2 block">카테고리</label>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="카테고리를 선택하세요" />
+              </SelectTrigger>
+              <SelectContent>
+                {ALL_CATEGORIES.map(group => (
+                  <div key={group.group}>
+                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                      {group.type === "EXPENSE" ? (
+                        <TrendingDown className="h-3 w-3 text-red-500" />
+                      ) : (
+                        <TrendingUp className="h-3 w-3 text-emerald-500" />
+                      )}
+                      {group.group}
+                    </div>
+                    {group.items.map(item => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </div>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 금액 입력 필드들 */}
+          {selectedCategory && (
+            <div className="space-y-3">
+              <label className="text-sm font-medium">금액</label>
+              {currentAmounts.map((item, index) => (
+                <div key={item.id} className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Input
+                      type="number"
+                      placeholder="금액"
+                      value={item.amount}
+                      onChange={(e) => updateAmount(item.id, "amount", e.target.value)}
+                      className="pr-8 text-right font-medium"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                      원
+                    </span>
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="메모"
+                    value={item.memo}
+                    onChange={(e) => updateAmount(item.id, "memo", e.target.value)}
+                    className="w-32"
+                  />
+                  {currentAmounts.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeAmountField(item.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               ))}
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={handleSaveAll}
-            disabled={saving || (validExpenses.length === 0 && validRevenues.length === 0)}
-            size="lg"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                저장 중...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                전체 저장
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+              
+              {/* 추가 버튼 */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addAmountField}
+                className="w-full gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                금액 추가
+              </Button>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card className="bg-red-50/50 border-red-100">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center">
-                  <TrendingDown className="h-6 w-6 text-red-600" />
+              {/* 소계 */}
+              {currentSubtotal > 0 && (
+                <div className="flex items-center justify-between pt-3 border-t">
+                  <span className="text-sm text-muted-foreground">
+                    {selectedCategoryInfo?.label} 소계
+                  </span>
+                  <span className={`text-lg font-bold ${
+                    selectedCategoryInfo?.type === "EXPENSE" ? "text-red-600" : "text-emerald-600"
+                  }`}>
+                    {selectedCategoryInfo?.type === "EXPENSE" ? "-" : "+"}
+                    {formatCurrency(currentSubtotal)}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">총 지출</p>
-                  <p className="text-sm text-muted-foreground">
-                    {validExpenses.length}개 카테고리
-                  </p>
-                </div>
-              </div>
-              <span className="text-3xl font-bold text-red-600">
-                {formatCurrency(totalExpense)}
-              </span>
+              )}
+
+              {/* 목록에 추가 버튼 */}
+              <Button
+                onClick={addToEntries}
+                disabled={currentSubtotal === 0}
+                className="w-full"
+              >
+                목록에 추가
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-emerald-50/50 border-emerald-100">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <TrendingUp className="h-6 w-6 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">총 수입</p>
-                  <p className="text-sm text-muted-foreground">
-                    {validRevenues.length}개 카테고리
-                  </p>
-                </div>
-              </div>
-              <span className="text-3xl font-bold text-emerald-600">
-                {formatCurrency(totalRevenue)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Category Input Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "EXPENSE" | "REVENUE")}>
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="EXPENSE" className="gap-2">
-            <TrendingDown className="h-4 w-4" />
-            지출
-          </TabsTrigger>
-          <TabsTrigger value="REVENUE" className="gap-2">
-            <TrendingUp className="h-4 w-4" />
-            수입
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="EXPENSE" className="mt-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {EXPENSE_CATEGORIES.map(category => {
-              const amount = expenseAmounts.find(a => a.categoryId === category.id);
-              const Icon = category.icon;
-              const isSaved = savedCategories.includes(category.id);
-              const hasValue = parseFloat(amount?.amount || "0") > 0;
-
-              return (
-                <Card 
-                  key={category.id} 
-                  className={`transition-all ${
-                    isSaved 
-                      ? "ring-2 ring-emerald-500 bg-emerald-50/30" 
-                      : hasValue 
-                        ? "ring-2 ring-red-200" 
-                        : ""
-                  }`}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${category.color}`}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <CardTitle className="text-base">{category.label}</CardTitle>
-                      </div>
-                      {isSaved && (
-                        <Badge variant="success" className="gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          저장됨
-                        </Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-1 block">
-                        금액
-                      </label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={amount?.amount || ""}
-                          onChange={(e) => updateAmount("EXPENSE", category.id, "amount", e.target.value)}
-                          className="text-right text-lg font-semibold pr-8"
-                          disabled={isSaved}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                          원
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-1 block">
-                        메모 (선택)
-                      </label>
-                      <Input
-                        type="text"
-                        placeholder="메모 입력..."
-                        value={amount?.memo || ""}
-                        onChange={(e) => updateAmount("EXPENSE", category.id, "memo", e.target.value)}
-                        className="text-sm"
-                        disabled={isSaved}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="REVENUE" className="mt-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {REVENUE_CATEGORIES.map(category => {
-              const amount = revenueAmounts.find(a => a.categoryId === category.id);
-              const Icon = category.icon;
-              const isSaved = savedCategories.includes(category.id);
-              const hasValue = parseFloat(amount?.amount || "0") > 0;
-
-              return (
-                <Card 
-                  key={category.id} 
-                  className={`transition-all ${
-                    isSaved 
-                      ? "ring-2 ring-emerald-500 bg-emerald-50/30" 
-                      : hasValue 
-                        ? "ring-2 ring-emerald-200" 
-                        : ""
-                  }`}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${category.color}`}>
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <CardTitle className="text-base">{category.label}</CardTitle>
-                      </div>
-                      {isSaved && (
-                        <Badge variant="success" className="gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          저장됨
-                        </Badge>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-1 block">
-                        금액
-                      </label>
-                      <div className="relative">
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={amount?.amount || ""}
-                          onChange={(e) => updateAmount("REVENUE", category.id, "amount", e.target.value)}
-                          className="text-right text-lg font-semibold pr-8"
-                          disabled={isSaved}
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                          원
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground mb-1 block">
-                        메모 (선택)
-                      </label>
-                      <Input
-                        type="text"
-                        placeholder="메모 입력..."
-                        value={amount?.memo || ""}
-                        onChange={(e) => updateAmount("REVENUE", category.id, "memo", e.target.value)}
-                        className="text-sm"
-                        disabled={isSaved}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Quick Summary */}
-      {(validExpenses.length > 0 || validRevenues.length > 0) && (
-        <Card className="bg-muted/30">
+      {/* 입력 내역 */}
+      {allEntries.length > 0 && (
+        <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">입력 요약</CardTitle>
-            <CardDescription>
-              {monthOptions.find(m => m.value === selectedMonth)?.label}
-            </CardDescription>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calculator className="h-5 w-5" />
+              입력 내역
+              <Badge variant="secondary" className="ml-auto">
+                {allEntries.length}건
+              </Badge>
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* 카테고리별 요약 */}
             <div className="space-y-2">
-              {validExpenses.map(item => {
-                const cat = getCategoryInfo("EXPENSE", item.categoryId);
-                return (
-                  <div key={item.categoryId} className="flex items-center justify-between py-1">
-                    <span className="text-sm flex items-center gap-2">
-                      <span className="text-red-500">−</span>
-                      {cat?.label}
-                    </span>
-                    <span className="font-medium text-red-600">
-                      {formatCurrency(parseFloat(item.amount))}
-                    </span>
+              {Object.entries(entriesByCategory).map(([categoryId, data]) => (
+                <div
+                  key={categoryId}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/50"
+                >
+                  <div className="flex items-center gap-2">
+                    {data.type === "EXPENSE" ? (
+                      <TrendingDown className="h-4 w-4 text-red-500" />
+                    ) : (
+                      <TrendingUp className="h-4 w-4 text-emerald-500" />
+                    )}
+                    <span className="font-medium">{data.label}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {data.count}건
+                    </Badge>
                   </div>
-                );
-              })}
-              {validRevenues.map(item => {
-                const cat = getCategoryInfo("REVENUE", item.categoryId);
-                return (
-                  <div key={item.categoryId} className="flex items-center justify-between py-1">
-                    <span className="text-sm flex items-center gap-2">
-                      <span className="text-emerald-500">+</span>
-                      {cat?.label}
-                    </span>
-                    <span className="font-medium text-emerald-600">
-                      {formatCurrency(parseFloat(item.amount))}
-                    </span>
+                  <span className={`font-bold ${
+                    data.type === "EXPENSE" ? "text-red-600" : "text-emerald-600"
+                  }`}>
+                    {data.type === "EXPENSE" ? "-" : "+"}
+                    {formatCurrency(data.total)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 상세 내역 (접기/펼치기 가능) */}
+            <details className="group">
+              <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+                상세 내역 보기
+              </summary>
+              <div className="mt-2 space-y-1 pl-2 border-l-2">
+                {allEntries.map(entry => (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between py-1 text-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">{entry.categoryLabel}</span>
+                      {entry.memo && (
+                        <span className="text-xs text-muted-foreground">
+                          ({entry.memo})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={entry.type === "EXPENSE" ? "text-red-600" : "text-emerald-600"}>
+                        {formatCurrency(entry.amount)}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeEntry(entry.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
-                );
-              })}
-              <div className="border-t pt-2 mt-2 flex items-center justify-between font-semibold">
-                <span>순이익</span>
-                <span className={totalRevenue - totalExpense >= 0 ? "text-emerald-600" : "text-red-600"}>
+                ))}
+              </div>
+            </details>
+
+            {/* 총계 */}
+            <div className="border-t pt-4 space-y-2">
+              {totalExpense > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">총 지출</span>
+                  <span className="font-bold text-red-600">
+                    -{formatCurrency(totalExpense)}
+                  </span>
+                </div>
+              )}
+              {totalRevenue > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">총 수입</span>
+                  <span className="font-bold text-emerald-600">
+                    +{formatCurrency(totalRevenue)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between pt-2 border-t">
+                <span className="font-semibold">순이익</span>
+                <span className={`text-xl font-bold ${
+                  totalRevenue - totalExpense >= 0 ? "text-emerald-600" : "text-red-600"
+                }`}>
                   {formatCurrency(totalRevenue - totalExpense)}
                 </span>
               </div>
             </div>
+
+            {/* 저장 버튼 */}
+            <Button
+              onClick={handleSaveAll}
+              disabled={saving}
+              size="lg"
+              className="w-full"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  저장 중...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {allEntries.length}건 저장하기
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 빈 상태 */}
+      {allEntries.length === 0 && !selectedCategory && (
+        <Card className="border-dashed">
+          <CardContent className="py-12 text-center">
+            <Receipt className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+            <p className="text-muted-foreground">
+              카테고리를 선택하고 금액을 입력하세요
+            </p>
           </CardContent>
         </Card>
       )}
