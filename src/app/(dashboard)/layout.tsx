@@ -2,8 +2,9 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
+import { Toaster } from "@/components/ui/toaster";
 
 export default function DashboardLayout({
   children,
@@ -40,7 +41,14 @@ export default function DashboardLayout({
     return null;
   }
 
-  return <MainLayout>{children}</MainLayout>;
+  return (
+    <>
+      <Suspense fallback={null}>
+        <MainLayout>{children}</MainLayout>
+      </Suspense>
+      <Toaster />
+    </>
+  );
 }
 
 

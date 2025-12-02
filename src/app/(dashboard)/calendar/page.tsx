@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +44,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { GoogleCalendarSync } from "@/components/google-calendar-sync";
+import { useToast } from "@/components/ui/use-toast";
 
 interface CalendarEvent {
   id: string;
@@ -72,6 +75,8 @@ const EVENT_TYPES = [
 ];
 
 export default function CalendarPage() {
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +94,34 @@ export default function CalendarPage() {
     memo: "",
     projectId: "",
   });
+
+  // Handle Google Calendar connection status
+  useEffect(() => {
+    const googleStatus = searchParams.get("google");
+    const error = searchParams.get("error");
+
+    if (googleStatus === "connected") {
+      toast({
+        title: "Google Calendar 연결 성공",
+        description: "이제 일정을 동기화할 수 있습니다.",
+      });
+      // Clean URL
+      window.history.replaceState({}, "", "/calendar");
+    } else if (error) {
+      const errorMessages: Record<string, string> = {
+        access_denied: "Google Calendar 접근이 거부되었습니다.",
+        invalid_request: "잘못된 요청입니다.",
+        token_error: "인증 토큰을 받지 못했습니다.",
+        auth_failed: "인증에 실패했습니다.",
+      };
+      toast({
+        title: "연결 실패",
+        description: errorMessages[error] || "알 수 없는 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/calendar");
+    }
+  }, [searchParams, toast]);
 
   useEffect(() => {
     fetchEvents();
@@ -412,6 +445,9 @@ export default function CalendarPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Google Calendar Sync */}
+      <GoogleCalendarSync onSyncComplete={fetchEvents} />
 
       {/* Upcoming Events */}
       <Card>
