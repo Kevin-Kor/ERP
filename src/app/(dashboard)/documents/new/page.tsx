@@ -278,9 +278,9 @@ export default function NewDocumentPage() {
               <div className="space-y-2">
                 <Label htmlFor="projectId">프로젝트 (선택)</Label>
                 <Select
-                  value={formData.projectId}
+                  value={formData.projectId || "none"}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, projectId: value })
+                    setFormData({ ...formData, projectId: value === "none" ? "" : value })
                   }
                   disabled={!formData.clientId}
                 >
@@ -288,7 +288,7 @@ export default function NewDocumentPage() {
                     <SelectValue placeholder="프로젝트 선택 (선택사항)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">없음</SelectItem>
+                    <SelectItem value="none">없음</SelectItem>
                     {projects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
                         {project.name}
