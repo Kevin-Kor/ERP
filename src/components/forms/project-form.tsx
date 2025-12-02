@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -63,7 +63,7 @@ export function ProjectForm({ initialData, mode, clientId }: ProjectFormProps) {
         watch,
         formState: { errors },
     } = useForm<ProjectFormData>({
-        resolver: zodResolver(projectSchema),
+        resolver: zodResolver(projectSchema) as Resolver<ProjectFormData>,
         defaultValues: initialData || {
             name: "",
             clientId: clientId || "",
@@ -159,10 +159,10 @@ export function ProjectForm({ initialData, mode, clientId }: ProjectFormProps) {
     }
 
     // 숏폼 플랫폼 (릴스, 쇼츠, 틱톡)
-    const shortformPlatforms = PLATFORM_OPTIONS.filter(p => 
+    const shortformPlatforms = PLATFORM_OPTIONS.filter(p =>
         ["INSTAGRAM_REELS", "YOUTUBE_SHORTS", "TIKTOK"].includes(p.value)
     );
-    const otherPlatforms = PLATFORM_OPTIONS.filter(p => 
+    const otherPlatforms = PLATFORM_OPTIONS.filter(p =>
         !["INSTAGRAM_REELS", "YOUTUBE_SHORTS", "TIKTOK"].includes(p.value)
     );
 

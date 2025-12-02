@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function TransactionForm({ initialData, mode }: TransactionFormProps) {
         watch,
         formState: { errors },
     } = useForm<TransactionFormData>({
-        resolver: zodResolver(transactionSchema),
+        resolver: zodResolver(transactionSchema) as Resolver<TransactionFormData>,
         defaultValues: initialData || {
             date: new Date().toISOString().split("T")[0],
             type: "REVENUE",
