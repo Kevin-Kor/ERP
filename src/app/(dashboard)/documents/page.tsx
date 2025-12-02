@@ -153,14 +153,18 @@ export default function DocumentsPage() {
   };
 
   const getTypeBadge = (type: string) => {
-    const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+    const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "info" | "success" }> = {
       QUOTE: { label: "견적서", variant: "secondary" },
       TAX_INVOICE: { label: "세금계산서", variant: "default" },
       CONTRACT: { label: "계약서", variant: "outline" },
+      BUSINESS_REG: { label: "사업자등록증", variant: "info" },
+      BANK_ACCOUNT: { label: "통장사본", variant: "success" },
+      EMAIL_DOC: { label: "이메일/서신", variant: "secondary" },
+      ID_CARD: { label: "신분증", variant: "outline" },
       OTHER: { label: "기타", variant: "outline" },
     };
     const { label, variant } = config[type] || { label: type, variant: "outline" as const };
-    return <Badge variant={variant}>{label}</Badge>;
+    return <Badge variant={variant as "default" | "secondary" | "outline" | "destructive"}>{label}</Badge>;
   };
 
   const getStatusBadge = (status: string) => {
@@ -200,7 +204,7 @@ export default function DocumentsPage() {
         <CardContent className="pt-6">
           <div className="flex gap-4">
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[150px]">
+              <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="문서 유형" />
               </SelectTrigger>
               <SelectContent>
@@ -208,6 +212,10 @@ export default function DocumentsPage() {
                 <SelectItem value="QUOTE">견적서</SelectItem>
                 <SelectItem value="TAX_INVOICE">세금계산서</SelectItem>
                 <SelectItem value="CONTRACT">계약서</SelectItem>
+                <SelectItem value="BUSINESS_REG">사업자등록증</SelectItem>
+                <SelectItem value="BANK_ACCOUNT">통장사본</SelectItem>
+                <SelectItem value="EMAIL_DOC">이메일/서신</SelectItem>
+                <SelectItem value="ID_CARD">신분증</SelectItem>
                 <SelectItem value="OTHER">기타</SelectItem>
               </SelectContent>
             </Select>
