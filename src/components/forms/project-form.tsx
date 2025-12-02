@@ -28,7 +28,7 @@ const projectSchema = z.object({
     status: z.enum(["QUOTING", "IN_PROGRESS", "COMPLETED", "CANCELLED"]),
     startDate: z.string().min(1, "시작일은 필수입니다"),
     endDate: z.string().min(1, "종료일은 필수입니다"),
-    contractAmount: z.coerce.number().min(0, "계약금액은 0 이상이어야 합니다"),
+    contractAmount: z.number().min(0, "계약금액은 0 이상이어야 합니다"),
     platforms: z.string().optional(),
     contentTypes: z.string().optional(),
     videoCount: z.coerce.number().min(0).optional(),
@@ -278,7 +278,7 @@ export function ProjectForm({ initialData, mode, clientId }: ProjectFormProps) {
                             <Input
                                 id="contractAmount"
                                 type="number"
-                                {...register("contractAmount")}
+                                {...register("contractAmount", { valueAsNumber: true })}
                                 placeholder="0"
                             />
                             {errors.contractAmount && (
