@@ -40,17 +40,17 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     const project = await prisma.project.findUnique({
         where: { id },
         include: {
-            client: true,
-            manager: true,
-            projectInfluencers: {
+            Client: true,
+            User: true,
+            ProjectInfluencer: {
                 include: {
-                    influencer: true,
+                    Influencer: true,
                 },
             },
-            documents: {
+            Document: {
                 orderBy: { issueDate: "desc" },
             },
-            transactions: {
+            Transaction: {
                 orderBy: { date: "desc" },
             },
         },
@@ -104,13 +104,13 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
     // 정산 상태별 통계
     const settlementStats = {
-        pending: project.projectInfluencers.filter(pi => pi.paymentStatus === "PENDING").length,
-        requested: project.projectInfluencers.filter(pi => pi.paymentStatus === "REQUESTED").length,
-        completed: project.projectInfluencers.filter(pi => pi.paymentStatus === "COMPLETED").length,
+        pending: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "PENDING").length,
+        requested: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "REQUESTED").length,
+        completed: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "COMPLETED").length,
     };
 
-    const totalInfluencerCost = project.projectInfluencers.reduce((sum, pi) => sum + pi.fee, 0);
-    const paidAmount = project.projectInfluencers
+    const totalInfluencerCost = project.ProjectInfluencer.reduce((sum, pi) => sum + pi.fee, 0);
+    const paidAmount = project.ProjectInfluencer
         .filter(pi => pi.paymentStatus === "COMPLETED")
         .reduce((sum, pi) => sum + pi.fee, 0);
 
@@ -131,8 +131,8 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-muted-foreground">
                             <Building2 className="h-4 w-4" />
-                            <Link href={`/clients/${project.client.id}`} className="hover:underline">
-                                {project.client.name}
+                            <Link href={`/clients/${project.Client.id}`} className="hover:underline">
+                                {project.Client.name}
                             </Link>
                         </div>
                     </div>
@@ -203,10 +203,10 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 <TabsList>
                     <TabsTrigger value="info">프로젝트 정보</TabsTrigger>
                     <TabsTrigger value="influencers">
-                        인플루언서 ({project.projectInfluencers.length})
+                        인플루언서 ({project.ProjectInfluencer.length})
                     </TabsTrigger>
                     <TabsTrigger value="documents">
-                        문서 ({project.documents.length})
+                        문서 ({project.Document.length})
                     </TabsTrigger>
                 </TabsList>
 
@@ -232,7 +232,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                         <p className="text-sm text-muted-foreground">담당자</p>
                                         <div className="flex items-center gap-2">
                                             <Users className="h-4 w-4 text-muted-foreground" />
-                                            <span className="font-medium">{project.manager?.name || "미지정"}</span>
+                                            <span className="font-medium">{project.User?.name || "미지정"}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -317,7 +317,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {project.projectInfluencers.length === 0 ? (
+                            {project.ProjectInfluencer.length === 0 ? (
                                 <div className="text-center py-8">
                                     <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                                     <p className="text-muted-foreground">등록된 인플루언서가 없습니다.</p>
@@ -334,21 +334,21 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {project.projectInfluencers.map((pi) => (
+                                        {project.ProjectInfluencer.map((pi) => (
                                             <TableRow key={pi.id}>
                                                 <TableCell>
                                                     <Link 
-                                                        href={`/influencers/${pi.influencer.id}`}
+                                                        href={`/influencers/${pi.Influencer.id}`}
                                                         className="font-medium hover:text-primary"
                                                     >
-                                                        {pi.influencer.name}
+                                                        {pi.Influencer.name}
                                                     </Link>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {pi.influencer.instagramId && (
+                                                    {pi.Influencer.instagramId && (
                                                         <span className="flex items-center gap-1 text-sm text-muted-foreground">
                                                             <Instagram className="h-3 w-3" />
-                                                            {pi.influencer.instagramId}
+                                                            {pi.Influencer.instagramId}
                                                         </span>
                                                     )}
                                                 </TableCell>
@@ -402,7 +402,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            {project.documents.length === 0 ? (
+                            {project.Document.length === 0 ? (
                                 <div className="text-center py-8">
                                     <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                                     <p className="text-muted-foreground">관련 문서가 없습니다.</p>
@@ -419,7 +419,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {project.documents.map((doc) => (
+                                        {project.Document.map((doc) => (
                                             <TableRow key={doc.id}>
                                                 <TableCell>
                                                     <Badge variant={
