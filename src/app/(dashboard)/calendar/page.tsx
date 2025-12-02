@@ -179,15 +179,26 @@ export default function CalendarPage() {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
+  // Format date to YYYY-MM-DD without timezone conversion
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const getEventsForDay = (day: number) => {
-    const dateStr = new Date(
+    const targetDate = new Date(
       currentDate.getFullYear(),
       currentDate.getMonth(),
       day
-    ).toISOString().split("T")[0];
+    );
+    const dateStr = formatLocalDate(targetDate);
 
     return events.filter((event) => {
-      const eventDate = new Date(event.date).toISOString().split("T")[0];
+      // Parse event date and format locally
+      const eventDateObj = new Date(event.date);
+      const eventDate = formatLocalDate(eventDateObj);
       return eventDate === dateStr;
     });
   };
@@ -210,7 +221,7 @@ export default function CalendarPage() {
     
     setFormData({
       title: "",
-      date: date.toISOString().split("T")[0],
+      date: formatLocalDate(date),
       endDate: "",
       type: "CUSTOM",
       color: "",
@@ -224,8 +235,8 @@ export default function CalendarPage() {
   const openEditEventDialog = (event: CalendarEvent) => {
     setFormData({
       title: event.title,
-      date: new Date(event.date).toISOString().split("T")[0],
-      endDate: event.endDate ? new Date(event.endDate).toISOString().split("T")[0] : "",
+      date: formatLocalDate(new Date(event.date)),
+      endDate: event.endDate ? formatLocalDate(new Date(event.endDate)) : "",
       type: event.type,
       color: event.color || "",
       memo: event.memo || "",
