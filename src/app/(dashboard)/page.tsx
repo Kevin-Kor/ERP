@@ -127,12 +127,12 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">대시보드</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">대시보드</h1>
           <p className="text-muted-foreground mt-1">{currentMonth} 현황</p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full sm:w-auto">
           <Link href="/projects/new">
             새 프로젝트 시작
           </Link>

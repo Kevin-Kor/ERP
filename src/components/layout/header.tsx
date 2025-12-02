@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Search, Plus, LogOut, User, Zap, Receipt, FileSpreadsheet } from "lucide-react";
+import { Bell, Search, Plus, LogOut, User, Zap, Receipt, FileSpreadsheet, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,31 +18,51 @@ import { signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { QuickTransactionModal } from "@/components/modals/quick-transaction-modal";
 
-export function Header() {
+interface HeaderProps {
+  onMenuClick?: () => void;
+}
+
+export function Header({ onMenuClick }: HeaderProps) {
   const { data: session } = useSession();
   const [quickTransactionOpen, setQuickTransactionOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* Search */}
-      <div className="flex items-center gap-4">
-        <div className="relative w-[320px]">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/95 px-4 md:px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Left Section */}
+      <div className="flex items-center gap-3">
+        {/* Mobile Menu Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        {/* Search - Hidden on mobile */}
+        <div className="relative hidden md:block md:w-[280px] lg:w-[320px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="클라이언트, 프로젝트, 인플루언서 검색..."
             className="pl-10"
           />
         </div>
+
+        {/* Mobile Search Button */}
+        <Button variant="ghost" size="icon" className="md:hidden">
+          <Search className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
         {/* Quick Add */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button size="sm" className="gap-2">
               <Plus className="h-4 w-4" />
-              빠른 추가
+              <span className="hidden sm:inline">빠른 추가</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -149,7 +169,7 @@ export function Header() {
         {/* User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 pl-2 pr-3">
+            <Button variant="ghost" className="gap-2 pl-2 pr-2 md:pr-3">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary/10 text-primary">
                   {session?.user?.name?.[0] || "U"}
@@ -186,5 +206,3 @@ export function Header() {
     </header>
   );
 }
-
-
