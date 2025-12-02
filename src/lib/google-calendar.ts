@@ -103,6 +103,21 @@ export function erpEventToGoogleEvent(event: {
   };
 }
 
+// Parse date string properly handling timezone
+function parseGoogleDate(dateStr: string | null | undefined, isAllDay: boolean): Date {
+  if (!dateStr) return new Date();
+  
+  if (isAllDay) {
+    // All-day events come as "YYYY-MM-DD"
+    // Parse as local date to avoid timezone shift
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day, 12, 0, 0); // Set to noon to avoid any edge cases
+  } else {
+    // DateTime events come with timezone info
+    return new Date(dateStr);
+  }
+}
+
 // Convert Google Calendar event to ERP event format
 export function googleEventToErpEvent(event: calendar_v3.Schema$Event): {
   title: string;
@@ -112,8 +127,13 @@ export function googleEventToErpEvent(event: calendar_v3.Schema$Event): {
   memo: string | null;
   googleEventId: string;
 } {
-  const startDate = event.start?.date || event.start?.dateTime;
-  const endDate = event.end?.date || event.end?.dateTime;
+  // Check if this is an all-day event (has .date) or timed event (has .dateTime)
+  const isAllDay = !!event.start?.date;
+  const startDateStr = event.start?.date || event.start?.dateTime;
+  const endDateStr = event.end?.date || event.end?.dateTime;
+
+  const parsedStartDate = parseGoogleDate(startDateStr, isAllDay);
+  const parsedEndDate = parseGoogleDate(endDateStr, isAllDay);
 
   // Determine event type from color or description
   let type = "CUSTOM";
@@ -133,10 +153,18 @@ export function googleEventToErpEvent(event: calendar_v3.Schema$Event): {
     .replace(/\[ERP 동기화 일정\]\n?/g, "")
     .trim() || null;
 
+  // For all-day events, end date is exclusive in Google Calendar
+  // So we subtract one day to get the actual end date
+  let adjustedEndDate = parsedEndDate;
+  if (isAllDay && endDateStr) {
+    adjustedEndDate = new Date(parsedEndDate);
+    adjustedEndDate.setDate(adjustedEndDate.getDate() - 1);
+  }
+
   return {
     title: event.summary || "제목 없음",
-    date: new Date(startDate!),
-    endDate: endDate ? new Date(endDate) : null,
+    date: parsedStartDate,
+    endDate: adjustedEndDate,
     type,
     memo: cleanDescription,
     googleEventId: event.id!,
@@ -206,6 +234,31 @@ export class GoogleCalendarSync {
       eventId,
     });
     return response.data;
+  }
+
+  // Set up webhook for push notifications
+  async watchCalendar(webhookUrl: string, channelId: string) {
+    const response = await this.calendar.events.watch({
+      calendarId: this.calendarId,
+      requestBody: {
+        id: channelId,
+        type: "web_hook",
+        address: webhookUrl,
+        // Expire in 7 days (max allowed)
+        expiration: String(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+    return response.data;
+  }
+
+  // Stop watching calendar
+  async stopWatch(channelId: string, resourceId: string) {
+    await this.calendar.channels.stop({
+      requestBody: {
+        id: channelId,
+        resourceId,
+      },
+    });
   }
 }
 
