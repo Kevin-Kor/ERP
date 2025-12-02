@@ -44,6 +44,7 @@ import {
   Phone,
   Mail,
   Briefcase,
+  ChevronRight,
 } from "lucide-react";
 import { STATUS_LABELS, INDUSTRY_OPTIONS } from "@/lib/utils";
 
@@ -138,16 +139,16 @@ export default function ClientsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">클라이언트</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">클라이언트</h1>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
             광고주 정보를 관리합니다.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full sm:w-auto">
           <Link href="/clients/new">
             <Plus className="h-4 w-4 mr-2" />
             새 클라이언트
@@ -157,45 +158,47 @@ export default function ClientsPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSearch} className="flex gap-4">
+        <CardContent className="pt-4 md:pt-6">
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="회사명, 담당자, 연락처로 검색..."
+                placeholder="회사명, 담당자로 검색..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="상태" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="ACTIVE">활성</SelectItem>
-                <SelectItem value="DORMANT">휴면</SelectItem>
-                <SelectItem value="TERMINATED">종료</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button type="submit" variant="secondary">
-              검색
-            </Button>
+            <div className="flex gap-2">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[120px]">
+                  <SelectValue placeholder="상태" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  <SelectItem value="ACTIVE">활성</SelectItem>
+                  <SelectItem value="DORMANT">휴면</SelectItem>
+                  <SelectItem value="TERMINATED">종료</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button type="submit" variant="secondary">
+                검색
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>
 
       {/* Client List */}
       <Card>
-        <CardHeader>
-          <CardTitle>클라이언트 목록</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg">클라이언트 목록</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
+                <Skeleton key={i} className="h-20 w-full" />
               ))}
             </div>
           ) : clients.length === 0 ? (
@@ -213,95 +216,151 @@ export default function ClientsPage() {
               </Button>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>회사명</TableHead>
-                  <TableHead>담당자</TableHead>
-                  <TableHead>연락처</TableHead>
-                  <TableHead>업종</TableHead>
-                  <TableHead>프로젝트</TableHead>
-                  <TableHead>상태</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
                 {clients.map((client) => (
-                  <TableRow key={client.id} className="group">
-                    <TableCell>
-                      <Link
-                        href={`/clients/${client.id}`}
-                        className="font-medium hover:text-primary transition-colors"
-                      >
-                        {client.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{client.contactName}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <span className="flex items-center gap-1 text-sm">
-                          <Phone className="h-3 w-3" />
-                          {client.phone}
-                        </span>
-                        {client.email && (
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Mail className="h-3 w-3" />
-                            {client.email}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getIndustryLabel(client.industry)}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1">
-                        <Briefcase className="h-3 w-3" />
-                        {client._count.projects}건
-                      </span>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(client.status)}</TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/clients/${client.id}`}>상세 보기</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/clients/${client.id}/edit`}>
-                              수정
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/projects/new?clientId=${client.id}`}>
-                              프로젝트 추가
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onSelect={(e) => e.preventDefault()}
-                          >
-                            <span
-                              className="w-full cursor-pointer"
-                              onClick={() => setDeleteId(client.id)}
-                            >
-                              삭제
+                  <Link
+                    key={client.id}
+                    href={`/clients/${client.id}`}
+                    className="block"
+                  >
+                    <div className="border rounded-lg p-4 hover:bg-muted/50 transition-colors active:bg-muted">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold truncate">{client.name}</h3>
+                            {getStatusBadge(client.status)}
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            {client.contactName}
+                          </p>
+                          <div className="flex flex-col gap-1 text-sm">
+                            <span className="flex items-center gap-2">
+                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                              {client.phone}
                             </span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
+                            {client.email && (
+                              <span className="flex items-center gap-2 text-muted-foreground">
+                                <Mail className="h-3.5 w-3.5" />
+                                <span className="truncate">{client.email}</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Briefcase className="h-3.5 w-3.5" />
+                            {client._count.projects}건
+                          </div>
+                        </div>
+                      </div>
+                      {client.industry && (
+                        <div className="mt-2 pt-2 border-t">
+                          <Badge variant="outline" className="text-xs">
+                            {getIndustryLabel(client.industry)}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </Link>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>회사명</TableHead>
+                      <TableHead>담당자</TableHead>
+                      <TableHead>연락처</TableHead>
+                      <TableHead>업종</TableHead>
+                      <TableHead>프로젝트</TableHead>
+                      <TableHead>상태</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clients.map((client) => (
+                      <TableRow key={client.id} className="group">
+                        <TableCell>
+                          <Link
+                            href={`/clients/${client.id}`}
+                            className="font-medium hover:text-primary transition-colors"
+                          >
+                            {client.name}
+                          </Link>
+                        </TableCell>
+                        <TableCell>{client.contactName}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className="flex items-center gap-1 text-sm">
+                              <Phone className="h-3 w-3" />
+                              {client.phone}
+                            </span>
+                            {client.email && (
+                              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Mail className="h-3 w-3" />
+                                {client.email}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{getIndustryLabel(client.industry)}</TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1">
+                            <Briefcase className="h-3 w-3" />
+                            {client._count.projects}건
+                          </span>
+                        </TableCell>
+                        <TableCell>{getStatusBadge(client.status)}</TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/clients/${client.id}`}>상세 보기</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/clients/${client.id}/edit`}>
+                                  수정
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/projects/new?clientId=${client.id}`}>
+                                  프로젝트 추가
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                <span
+                                  className="w-full cursor-pointer"
+                                  onClick={() => setDeleteId(client.id)}
+                                >
+                                  삭제
+                                </span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -335,5 +394,3 @@ export default function ClientsPage() {
     </div>
   );
 }
-
-
