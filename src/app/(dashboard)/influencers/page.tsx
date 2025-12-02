@@ -53,9 +53,10 @@ export default function InfluencersPage() {
 
       const res = await fetch(`/api/influencers?${params}`);
       const data = await res.json();
-      setInfluencers(data.influencers);
+      setInfluencers(data.influencers || []);
     } catch (error) {
       console.error("Failed to fetch influencers:", error);
+      setInfluencers([]);
     } finally {
       setLoading(false);
     }
