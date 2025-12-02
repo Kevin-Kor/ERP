@@ -53,7 +53,7 @@ export async function GET(
     const revenue = client.transactions
       .filter((t) => t.type === "REVENUE")
       .reduce((sum, t) => sum + t.amount, 0);
-    
+
     const expenses = client.transactions
       .filter((t) => t.type === "EXPENSE")
       .reduce((sum, t) => sum + t.amount, 0);
@@ -102,7 +102,7 @@ export async function PATCH(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Validation failed", details: error.errors },
+        { error: "Validation failed", details: error.issues },
         { status: 400 }
       );
     }
