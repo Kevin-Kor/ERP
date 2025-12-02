@@ -47,8 +47,8 @@ export async function GET() {
         paymentStatus: "PENDING",
       },
       include: {
-        client: true,
-        project: true,
+        Client: true,
+        Project: true,
       },
       orderBy: {
         date: "asc",
@@ -63,8 +63,8 @@ export async function GET() {
         },
       },
       include: {
-        influencer: true,
-        project: true,
+        Influencer: true,
+        Project: true,
       },
       orderBy: {
         paymentDueDate: "asc",
@@ -75,14 +75,14 @@ export async function GET() {
     const completedProjectsWithoutInvoice = await prisma.project.findMany({
       where: {
         status: "COMPLETED",
-        documents: {
+        Document: {
           none: {
             type: "TAX_INVOICE",
           },
         },
       },
       include: {
-        client: true,
+        Client: true,
       },
     });
 
@@ -92,8 +92,8 @@ export async function GET() {
         status: "IN_PROGRESS",
       },
       include: {
-        client: true,
-        manager: true,
+        Client: true,
+        User: true,
       },
       orderBy: {
         endDate: "asc",
@@ -128,7 +128,7 @@ export async function GET() {
         createdAt: "desc",
       },
       include: {
-        user: true,
+        User: true,
       },
     });
 
@@ -139,9 +139,43 @@ export async function GET() {
         createdAt: "desc",
       },
       include: {
-        client: true,
+        Client: true,
       },
     });
+
+    // Transform data to use lowercase field names for frontend
+    const transformedUnpaidTransactions = unpaidTransactions.map(t => ({
+      ...t,
+      client: t.Client,
+      project: t.Project,
+    }));
+
+    const transformedPendingSettlements = pendingSettlements.map(s => ({
+      ...s,
+      influencer: s.Influencer,
+      project: s.Project,
+    }));
+
+    const transformedCompletedProjects = completedProjectsWithoutInvoice.map(p => ({
+      ...p,
+      client: p.Client,
+    }));
+
+    const transformedActiveProjects = activeProjects.map(p => ({
+      ...p,
+      client: p.Client,
+      manager: p.User,
+    }));
+
+    const transformedActivities = recentActivities.map(a => ({
+      ...a,
+      user: a.User,
+    }));
+
+    const transformedDocuments = recentDocuments.map(d => ({
+      ...d,
+      client: d.Client,
+    }));
 
     return NextResponse.json({
       summary: {
@@ -151,26 +185,26 @@ export async function GET() {
         profitRate,
       },
       actions: {
-        unpaidCount: unpaidTransactions.length,
-        unpaidAmount: unpaidTransactions.reduce((sum, t) => sum + t.amount, 0),
-        unpaidTransactions,
-        pendingSettlementsCount: pendingSettlements.length,
-        pendingSettlementsAmount: pendingSettlements.reduce(
+        unpaidCount: transformedUnpaidTransactions.length,
+        unpaidAmount: transformedUnpaidTransactions.reduce((sum, t) => sum + t.amount, 0),
+        unpaidTransactions: transformedUnpaidTransactions,
+        pendingSettlementsCount: transformedPendingSettlements.length,
+        pendingSettlementsAmount: transformedPendingSettlements.reduce(
           (sum, s) => sum + s.fee,
           0
         ),
-        pendingSettlements,
-        unissuedInvoicesCount: completedProjectsWithoutInvoice.length,
-        unissuedInvoices: completedProjectsWithoutInvoice,
+        pendingSettlements: transformedPendingSettlements,
+        unissuedInvoicesCount: transformedCompletedProjects.length,
+        unissuedInvoices: transformedCompletedProjects,
       },
       projects: {
-        activeCount: activeProjects.length,
+        activeCount: transformedActiveProjects.length,
         endingTodayCount: projectsEndingToday.length,
         endingThisWeekCount: projectsEndingThisWeek.length,
-        activeProjects: activeProjects.slice(0, 5),
+        activeProjects: transformedActiveProjects.slice(0, 5),
       },
-      recentActivities,
-      recentDocuments,
+      recentActivities: transformedActivities,
+      recentDocuments: transformedDocuments,
     });
   } catch (error) {
     console.error("Dashboard API Error:", error);

@@ -36,31 +36,43 @@ export async function GET(request: NextRequest) {
     if (search) {
       where.OR = [
         { name: { contains: search } },
-        { client: { name: { contains: search } } },
+        { Client: { name: { contains: search } } },
       ];
     }
 
     const projects = await prisma.project.findMany({
       where,
       include: {
-        client: {
+        Client: {
           select: { id: true, name: true },
         },
-        manager: {
+        User: {
           select: { id: true, name: true },
         },
         _count: {
           select: {
-            projectInfluencers: true,
-            documents: true,
-            transactions: true,
+            ProjectInfluencer: true,
+            Document: true,
+            Transaction: true,
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ projects });
+    // Transform to lowercase field names for frontend
+    const transformedProjects = projects.map(p => ({
+      ...p,
+      client: p.Client,
+      manager: p.User,
+      _count: {
+        projectInfluencers: p._count.ProjectInfluencer,
+        documents: p._count.Document,
+        transactions: p._count.Transaction,
+      },
+    }));
+
+    return NextResponse.json({ projects: transformedProjects });
   } catch (error) {
     console.error("GET /api/projects error:", error);
     return NextResponse.json(
@@ -84,12 +96,19 @@ export async function POST(request: NextRequest) {
         managerId: validatedData.managerId || null,
       },
       include: {
-        client: true,
-        manager: true,
+        Client: true,
+        User: true,
       },
     });
 
-    return NextResponse.json(project, { status: 201 });
+    // Transform to lowercase field names
+    const transformedProject = {
+      ...project,
+      client: project.Client,
+      manager: project.User,
+    };
+
+    return NextResponse.json(transformedProject, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

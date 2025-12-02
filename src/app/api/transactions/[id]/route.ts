@@ -10,9 +10,9 @@ export async function GET(
     const transaction = await prisma.transaction.findUnique({
       where: { id },
       include: {
-        client: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        influencer: { select: { id: true, name: true } },
+        Client: { select: { id: true, name: true } },
+        Project: { select: { id: true, name: true } },
+        Influencer: { select: { id: true, name: true } },
       },
     });
 
@@ -20,7 +20,15 @@ export async function GET(
       return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
     }
 
-    return NextResponse.json(transaction);
+    // Transform to lowercase field names
+    const transformedTransaction = {
+      ...transaction,
+      client: transaction.Client,
+      project: transaction.Project,
+      influencer: transaction.Influencer,
+    };
+
+    return NextResponse.json(transformedTransaction);
   } catch (error) {
     console.error("GET /api/transactions/[id] error:", error);
     return NextResponse.json(
@@ -75,13 +83,21 @@ export async function PATCH(
       where: { id },
       data: updateData,
       include: {
-        client: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
-        influencer: { select: { id: true, name: true } },
+        Client: { select: { id: true, name: true } },
+        Project: { select: { id: true, name: true } },
+        Influencer: { select: { id: true, name: true } },
       },
     });
 
-    return NextResponse.json(transaction);
+    // Transform to lowercase field names
+    const transformedTransaction = {
+      ...transaction,
+      client: transaction.Client,
+      project: transaction.Project,
+      influencer: transaction.Influencer,
+    };
+
+    return NextResponse.json(transformedTransaction);
   } catch (error) {
     console.error("PATCH /api/transactions/[id] error:", error);
     return NextResponse.json(

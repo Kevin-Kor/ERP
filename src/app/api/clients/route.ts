@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
         include: {
           _count: {
             select: {
-              projects: true,
-              documents: true,
-              transactions: true,
+              Project: true,
+              Document: true,
+              Transaction: true,
             },
           },
         },
@@ -57,8 +57,18 @@ export async function GET(request: NextRequest) {
       prisma.client.count({ where }),
     ]);
 
+    // Transform to lowercase field names
+    const transformedClients = clients.map(c => ({
+      ...c,
+      _count: {
+        projects: c._count.Project,
+        documents: c._count.Document,
+        transactions: c._count.Transaction,
+      },
+    }));
+
     return NextResponse.json({
-      clients,
+      clients: transformedClients,
       pagination: {
         total,
         page,

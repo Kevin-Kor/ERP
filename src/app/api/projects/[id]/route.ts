@@ -26,17 +26,17 @@ export async function GET(
         const project = await prisma.project.findUnique({
             where: { id },
             include: {
-                client: true,
-                manager: true,
-                projectInfluencers: {
+                Client: true,
+                User: true,
+                ProjectInfluencer: {
                     include: {
-                        influencer: true,
+                        Influencer: true,
                     },
                 },
-                documents: {
+                Document: {
                     orderBy: { issueDate: "desc" },
                 },
-                transactions: {
+                Transaction: {
                     orderBy: { date: "desc" },
                 },
             },
@@ -49,7 +49,20 @@ export async function GET(
             );
         }
 
-        return NextResponse.json(project);
+        // Transform to lowercase field names for frontend
+        const transformedProject = {
+            ...project,
+            client: project.Client,
+            manager: project.User,
+            projectInfluencers: project.ProjectInfluencer.map(pi => ({
+                ...pi,
+                influencer: pi.Influencer,
+            })),
+            documents: project.Document,
+            transactions: project.Transaction,
+        };
+
+        return NextResponse.json(transformedProject);
     } catch (error) {
         console.error("GET /api/projects/[id] error:", error);
         return NextResponse.json(

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const settlements = await prisma.projectInfluencer.findMany({
       where,
       include: {
-        influencer: {
+        Influencer: {
           select: {
             id: true,
             name: true,
@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
             bankAccount: true,
           },
         },
-        project: {
+        Project: {
           select: {
             id: true,
             name: true,
-            client: {
+            Client: {
               select: { name: true },
             },
           },
@@ -38,7 +38,17 @@ export async function GET(request: NextRequest) {
       ],
     });
 
-    return NextResponse.json({ settlements });
+    // Transform to lowercase field names
+    const transformedSettlements = settlements.map(s => ({
+      ...s,
+      influencer: s.Influencer,
+      project: {
+        ...s.Project,
+        client: s.Project.Client,
+      },
+    }));
+
+    return NextResponse.json({ settlements: transformedSettlements });
   } catch (error) {
     console.error("GET /api/settlements error:", error);
     return NextResponse.json(

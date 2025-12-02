@@ -25,18 +25,18 @@ export async function GET(
     const client = await prisma.client.findUnique({
       where: { id },
       include: {
-        projects: {
+        Project: {
           orderBy: { createdAt: "desc" },
           include: {
-            manager: {
+            User: {
               select: { name: true },
             },
           },
         },
-        documents: {
+        Document: {
           orderBy: { issueDate: "desc" },
         },
-        transactions: {
+        Transaction: {
           orderBy: { date: "desc" },
         },
       },
@@ -50,27 +50,36 @@ export async function GET(
     }
 
     // Calculate financial summary
-    const revenue = client.transactions
+    const revenue = client.Transaction
       .filter((t) => t.type === "REVENUE")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const expenses = client.transactions
+    const expenses = client.Transaction
       .filter((t) => t.type === "EXPENSE")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const unpaidAmount = client.transactions
+    const unpaidAmount = client.Transaction
       .filter((t) => t.type === "REVENUE" && t.paymentStatus === "PENDING")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    return NextResponse.json({
+    // Transform to lowercase field names
+    const transformedClient = {
       ...client,
+      projects: client.Project.map(p => ({
+        ...p,
+        manager: p.User,
+      })),
+      documents: client.Document,
+      transactions: client.Transaction,
       financialSummary: {
         totalRevenue: revenue,
         totalExpenses: expenses,
         netProfit: revenue - expenses,
         unpaidAmount,
       },
-    });
+    };
+
+    return NextResponse.json(transformedClient);
   } catch (error) {
     console.error("GET /api/clients/[id] error:", error);
     return NextResponse.json(

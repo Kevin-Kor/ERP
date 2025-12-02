@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,211 +7,154 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// 사용자 (Users)
-// ============================================
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  password      String
-  name          String
-  role          String    @default("MEMBER") // ADMIN, MEMBER
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  projects      Project[] @relation("ProjectManager")
-  activities    Activity[]
-  calendarEvents CalendarEvent[]
+model Activity {
+  id         String   @id
+  action     String
+  entityType String
+  entityId   String
+  createdAt  DateTime @default(now())
+  userId     String
+  User       User     @relation(fields: [userId], references: [id])
 }
 
-// ============================================
-// 클라이언트 (Clients)
-// ============================================
+model CalendarEvent {
+  id        String    @id
+  title     String
+  date      DateTime
+  endDate   DateTime?
+  type      String
+  color     String?
+  memo      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime
+  projectId String?
+  userId    String?
+  Project   Project?  @relation(fields: [projectId], references: [id])
+  User      User?     @relation(fields: [userId], references: [id])
+}
+
 model Client {
-  id            String    @id @default(cuid())
-  name          String    // 회사명
-  contactName   String    // 담당자명
-  phone         String    // 연락처
-  email         String?   // 이메일
-  businessNo    String?   // 사업자번호
-  address       String?   // 주소
-  industry      String?   // 업종: 식음료/뷰티/패션/기타
-  status        String    @default("ACTIVE") // ACTIVE, DORMANT, TERMINATED
-  memo          String?   // 메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  projects      Project[]
-  documents     Document[]
-  transactions  Transaction[]
+  id          String        @id
+  name        String
+  contactName String
+  phone       String
+  email       String?
+  businessNo  String?
+  address     String?
+  industry    String?
+  status      String        @default("ACTIVE")
+  memo        String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  Document    Document[]
+  Project     Project[]
+  Transaction Transaction[]
 }
 
-// ============================================
-// 프로젝트/캠페인 (Projects)
-// ============================================
-model Project {
-  id            String    @id @default(cuid())
-  name          String    // 프로젝트명
-  status        String    @default("QUOTING") // QUOTING, IN_PROGRESS, COMPLETED, CANCELLED
-  startDate     DateTime  // 시작일
-  endDate       DateTime  // 종료일
-  contractAmount Float    // 계약금액
-  platforms     String?   // 인스타그램,유튜브,블로그,틱톡 (쉼표 구분)
-  contentTypes  String?   // 피드,릴스,스토리,숏폼 (쉼표 구분)
-  memo          String?   // 메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Foreign Keys
-  clientId      String
-  managerId     String?
-  
-  // Relations
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  manager       User?     @relation("ProjectManager", fields: [managerId], references: [id])
-  projectInfluencers ProjectInfluencer[]
-  documents     Document[]
-  transactions  Transaction[]
-  calendarEvents CalendarEvent[]
+model Document {
+  id        String   @id
+  type      String
+  docNumber String   @unique
+  issueDate DateTime
+  amount    Float
+  status    String   @default("ISSUED")
+  filePath  String?
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+  clientId  String
+  projectId String?
+  Client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  Project   Project? @relation(fields: [projectId], references: [id])
 }
 
-// ============================================
-// 인플루언서 (Influencers)
-// ============================================
 model Influencer {
-  id            String    @id @default(cuid())
-  name          String    // 이름/닉네임
-  instagramId   String?   // 인스타그램 ID
-  youtubeChannel String?  // 유튜브 채널
-  blog          String?   // 블로그
-  followerCount Int?      // 팔로워 수
-  categories    String?   // 맛집,뷰티,라이프스타일,육아 (쉼표 구분)
-  phone         String    // 연락처
-  bankAccount   String?   // 계좌정보
-  priceRange    String?   // 단가 범위
-  memo          String?   // 평가/메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Relations
-  projectInfluencers ProjectInfluencer[]
-  transactions  Transaction[]
+  id                String              @id
+  name              String
+  instagramId       String?
+  youtubeChannel    String?
+  blog              String?
+  followerCount     Int?
+  categories        String?
+  phone             String
+  bankAccount       String?
+  priceRange        String?
+  memo              String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  ProjectInfluencer ProjectInfluencer[]
+  Transaction       Transaction[]
 }
 
-// ============================================
-// 프로젝트-인플루언서 연결 (Project_Influencers)
-// ============================================
+model Project {
+  id                String              @id
+  name              String
+  status            String              @default("QUOTING")
+  startDate         DateTime
+  endDate           DateTime
+  contractAmount    Float
+  platforms         String?
+  contentTypes      String?
+  memo              String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime
+  clientId          String
+  managerId         String?
+  CalendarEvent     CalendarEvent[]
+  Document          Document[]
+  Client            Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  User              User?               @relation(fields: [managerId], references: [id])
+  ProjectInfluencer ProjectInfluencer[]
+  Transaction       Transaction[]
+}
+
 model ProjectInfluencer {
-  id              String    @id @default(cuid())
-  fee             Float     // 정산 금액
-  paymentStatus   String    @default("PENDING") // PENDING, REQUESTED, COMPLETED
-  paymentDueDate  DateTime? // 정산 예정일
-  paymentDate     DateTime? // 정산 완료일
-  proofFile       String?   // 증빙 파일
-  contentStatus   String?   // 콘텐츠 상태
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  
-  // Foreign Keys
-  projectId       String
-  influencerId    String
-  
-  // Relations
-  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  influencer      Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-  
+  id             String     @id
+  fee            Float
+  paymentStatus  String     @default("PENDING")
+  paymentDueDate DateTime?
+  paymentDate    DateTime?
+  proofFile      String?
+  contentStatus  String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime
+  projectId      String
+  influencerId   String
+  Influencer     Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  Project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, influencerId])
 }
 
-// ============================================
-// 문서 (Documents)
-// ============================================
-model Document {
-  id            String    @id @default(cuid())
-  type          String    // QUOTE, TAX_INVOICE, CONTRACT, OTHER
-  docNumber     String    @unique // 문서 번호
-  issueDate     DateTime  // 발행일
-  amount        Float     // 금액
-  status        String    @default("ISSUED") // ISSUED, DELIVERED, ACCEPTED, REJECTED
-  filePath      String?   // 파일 경로
-  memo          String?   // 메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Foreign Keys
-  clientId      String
-  projectId     String?
-  
-  // Relations
-  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  project       Project?  @relation(fields: [projectId], references: [id])
-}
-
-// ============================================
-// 거래 내역 (Transactions)
-// ============================================
 model Transaction {
-  id            String    @id @default(cuid())
-  date          DateTime  // 거래일
-  type          String    // REVENUE, EXPENSE
-  category      String    // 카테고리
-  amount        Float     // 금액
-  vatIncluded   Boolean   @default(true) // VAT 포함 여부
-  paymentStatus String    @default("PENDING") // PENDING, COMPLETED
-  paymentDate   DateTime? // 결제일
-  memo          String?   // 메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Foreign Keys
+  id            String      @id
+  date          DateTime
+  type          String
+  category      String
+  amount        Float
+  vatIncluded   Boolean     @default(true)
+  paymentStatus String      @default("PENDING")
+  paymentDate   DateTime?
+  memo          String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime
   clientId      String?
   projectId     String?
   influencerId  String?
-  
-  // Relations
-  client        Client?    @relation(fields: [clientId], references: [id])
-  project       Project?   @relation(fields: [projectId], references: [id])
-  influencer    Influencer? @relation(fields: [influencerId], references: [id])
+  Client        Client?     @relation(fields: [clientId], references: [id])
+  Influencer    Influencer? @relation(fields: [influencerId], references: [id])
+  Project       Project?    @relation(fields: [projectId], references: [id])
 }
 
-// ============================================
-// 캘린더 이벤트 (Calendar Events)
-// ============================================
-model CalendarEvent {
-  id            String    @id @default(cuid())
-  title         String    // 일정 제목
-  date          DateTime  // 일정 날짜
-  endDate       DateTime? // 종료 날짜 (기간 이벤트의 경우)
-  type          String    // PROJECT, CONTENT, SETTLEMENT, PAYMENT, INVOICE, CUSTOM
-  color         String?   // 색상 코드
-  memo          String?   // 메모
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  
-  // Foreign Keys
-  projectId     String?
-  userId        String?
-  
-  // Relations
-  project       Project?  @relation(fields: [projectId], references: [id])
-  user          User?     @relation(fields: [userId], references: [id])
-}
-
-// ============================================
-// 활동 로그 (Activity Log)
-// ============================================
-model Activity {
-  id            String    @id @default(cuid())
-  action        String    // 활동 내용
-  entityType    String    // CLIENT, PROJECT, INFLUENCER, DOCUMENT, TRANSACTION
-  entityId      String    // 관련 엔티티 ID
-  createdAt     DateTime  @default(now())
-  
-  // Foreign Keys
-  userId        String
-  
-  // Relations
-  user          User      @relation(fields: [userId], references: [id])
+model User {
+  id            String          @id
+  email         String          @unique
+  password      String
+  name          String
+  role          String          @default("MEMBER")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  Activity      Activity[]
+  CalendarEvent CalendarEvent[]
+  Project       Project[]
 }

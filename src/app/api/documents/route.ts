@@ -14,13 +14,20 @@ export async function GET(request: NextRequest) {
     const documents = await prisma.document.findMany({
       where,
       include: {
-        client: { select: { name: true } },
-        project: { select: { name: true } },
+        Client: { select: { name: true } },
+        Project: { select: { name: true } },
       },
       orderBy: { issueDate: "desc" },
     });
 
-    return NextResponse.json({ documents });
+    // Transform to lowercase field names
+    const transformedDocuments = documents.map(d => ({
+      ...d,
+      client: d.Client,
+      project: d.Project,
+    }));
+
+    return NextResponse.json({ documents: transformedDocuments });
   } catch (error) {
     console.error("GET /api/documents error:", error);
     return NextResponse.json(

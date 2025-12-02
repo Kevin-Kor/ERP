@@ -26,9 +26,9 @@ export async function GET(request: NextRequest) {
       where,
       include: {
         _count: {
-          select: { projectInfluencers: true },
+          select: { ProjectInfluencer: true },
         },
-        projectInfluencers: {
+        ProjectInfluencer: {
           select: {
             fee: true,
             paymentStatus: true,
@@ -38,7 +38,16 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ influencers });
+    // Transform to lowercase field names
+    const transformedInfluencers = influencers.map(i => ({
+      ...i,
+      _count: {
+        projectInfluencers: i._count.ProjectInfluencer,
+      },
+      projectInfluencers: i.ProjectInfluencer,
+    }));
+
+    return NextResponse.json({ influencers: transformedInfluencers });
   } catch (error) {
     console.error("GET /api/influencers error:", error);
     return NextResponse.json(

@@ -18,12 +18,18 @@ export async function GET(request: NextRequest) {
         },
       },
       include: {
-        project: { select: { name: true } },
+        Project: { select: { name: true } },
       },
       orderBy: { date: "asc" },
     });
 
-    return NextResponse.json({ events });
+    // Transform to lowercase field names
+    const transformedEvents = events.map(e => ({
+      ...e,
+      project: e.Project,
+    }));
+
+    return NextResponse.json({ events: transformedEvents });
   } catch (error) {
     console.error("GET /api/calendar error:", error);
     return NextResponse.json(

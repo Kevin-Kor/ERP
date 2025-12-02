@@ -84,9 +84,16 @@ export default function DashboardPage() {
       try {
         const res = await fetch("/api/dashboard");
         const json = await res.json();
-        setData(json);
+        // API 오류 응답 체크
+        if (json.error || !json.summary) {
+          console.error("Dashboard API error:", json.error);
+          setData(null);
+        } else {
+          setData(json);
+        }
       } catch (error) {
         console.error("Failed to fetch dashboard:", error);
+        setData(null);
       } finally {
         setLoading(false);
       }
@@ -98,10 +105,16 @@ export default function DashboardPage() {
     return <DashboardSkeleton />;
   }
 
-  if (!data) {
+  if (!data || !data.summary) {
     return (
       <div className="flex items-center justify-center h-96">
-        <p className="text-muted-foreground">데이터를 불러올 수 없습니다.</p>
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <p className="text-muted-foreground">데이터를 불러올 수 없습니다.</p>
+          <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">
+            다시 시도
+          </Button>
+        </div>
       </div>
     );
   }

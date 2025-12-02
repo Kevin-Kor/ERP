@@ -10,8 +10,8 @@ export async function GET(
     const event = await prisma.calendarEvent.findUnique({
       where: { id },
       include: {
-        project: { select: { id: true, name: true } },
-        user: { select: { id: true, name: true } },
+        Project: { select: { id: true, name: true } },
+        User: { select: { id: true, name: true } },
       },
     });
 
@@ -19,7 +19,14 @@ export async function GET(
       return NextResponse.json({ error: "Event not found" }, { status: 404 });
     }
 
-    return NextResponse.json(event);
+    // Transform to lowercase field names
+    const transformedEvent = {
+      ...event,
+      project: event.Project,
+      user: event.User,
+    };
+
+    return NextResponse.json(transformedEvent);
   } catch (error) {
     console.error("GET /api/calendar/[id] error:", error);
     return NextResponse.json(

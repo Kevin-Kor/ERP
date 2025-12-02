@@ -12,8 +12,8 @@ export async function GET(
     const document = await prisma.document.findUnique({
       where: { id },
       include: {
-        client: { select: { id: true, name: true } },
-        project: { select: { id: true, name: true } },
+        Client: { select: { id: true, name: true } },
+        Project: { select: { id: true, name: true } },
       },
     });
 
@@ -21,7 +21,14 @@ export async function GET(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    return NextResponse.json(document);
+    // Transform to lowercase field names
+    const transformedDocument = {
+      ...document,
+      client: document.Client,
+      project: document.Project,
+    };
+
+    return NextResponse.json(transformedDocument);
   } catch (error) {
     console.error("GET /api/documents/[id] error:", error);
     return NextResponse.json(

@@ -14,14 +14,22 @@ export async function GET(request: NextRequest) {
     const transactions = await prisma.transaction.findMany({
       where,
       include: {
-        client: { select: { name: true } },
-        project: { select: { name: true } },
-        influencer: { select: { name: true } },
+        Client: { select: { name: true } },
+        Project: { select: { name: true } },
+        Influencer: { select: { name: true } },
       },
       orderBy: { date: "desc" },
     });
 
-    return NextResponse.json({ transactions });
+    // Transform to lowercase field names
+    const transformedTransactions = transactions.map(t => ({
+      ...t,
+      client: t.Client,
+      project: t.Project,
+      influencer: t.Influencer,
+    }));
+
+    return NextResponse.json({ transactions: transformedTransactions });
   } catch (error) {
     console.error("GET /api/transactions error:", error);
     return NextResponse.json(

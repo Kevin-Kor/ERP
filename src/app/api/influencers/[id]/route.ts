@@ -10,14 +10,14 @@ export async function GET(
     const influencer = await prisma.influencer.findUnique({
       where: { id },
       include: {
-        projectInfluencers: {
+        ProjectInfluencer: {
           include: {
-            project: {
+            Project: {
               select: {
                 id: true,
                 name: true,
                 status: true,
-                client: { select: { name: true } },
+                Client: { select: { name: true } },
               },
             },
           },
@@ -30,7 +30,19 @@ export async function GET(
       return NextResponse.json({ error: "Influencer not found" }, { status: 404 });
     }
 
-    return NextResponse.json(influencer);
+    // Transform to lowercase field names
+    const transformedInfluencer = {
+      ...influencer,
+      projectInfluencers: influencer.ProjectInfluencer.map(pi => ({
+        ...pi,
+        project: {
+          ...pi.Project,
+          client: pi.Project.Client,
+        },
+      })),
+    };
+
+    return NextResponse.json(transformedInfluencer);
   } catch (error) {
     console.error("GET /api/influencers/[id] error:", error);
     return NextResponse.json(
