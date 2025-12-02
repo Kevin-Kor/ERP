@@ -24,7 +24,7 @@ const transactionSchema = z.object({
     date: z.string().min(1, "날짜는 필수입니다"),
     type: z.enum(["REVENUE", "EXPENSE"]),
     category: z.string().min(1, "카테고리는 필수입니다"),
-    amount: z.coerce.number().min(1, "금액은 0보다 커야 합니다"),
+    amount: z.number().min(1, "금액은 0보다 커야 합니다"),
     paymentStatus: z.enum(["PENDING", "COMPLETED"]),
     paymentDate: z.string().optional(),
     clientId: z.string().optional(),
@@ -202,7 +202,7 @@ export function TransactionForm({ initialData, mode }: TransactionFormProps) {
                             <Input
                                 id="amount"
                                 type="number"
-                                {...register("amount")}
+                                {...register("amount", { valueAsNumber: true })}
                                 placeholder="0"
                             />
                             {errors.amount && (
