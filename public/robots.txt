@@ -1,0 +1,17 @@
+# 모든 검색엔진 크롤링 차단
+User-agent: *
+Disallow: /
+
+# 검색엔진 봇 명시적 차단
+User-agent: Googlebot
+Disallow: /
+
+User-agent: Bingbot
+Disallow: /
+
+User-agent: Yandex
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
