@@ -111,15 +111,6 @@ function LoginForm() {
             )}
           </Button>
         </form>
-
-        <div className="mt-6 pt-6 border-t border-white/10">
-          <p className="text-center text-sm text-muted-foreground">
-            테스트 계정: <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">admin@agency.com</span>
-          </p>
-          <p className="text-center text-sm text-muted-foreground mt-1">
-            비밀번호: <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">admin123</span>
-          </p>
-        </div>
       </CardContent>
     </Card>
   );
