@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -61,6 +61,9 @@ import {
   Loader2,
   CheckCircle,
   Clock,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency, formatDate, REVENUE_CATEGORIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS } from "@/lib/utils";
@@ -82,8 +85,13 @@ interface Transaction {
 export default function FinancePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [typeFilter, setTypeFilter] = useState("all");
-  
+
+  // 월 선택 state
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+
   // Edit modal state
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -96,20 +104,61 @@ export default function FinancePage() {
     paymentStatus: "",
     memo: "",
   });
-  
+
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  // 월 옵션 생성 (최근 24개월)
+  const monthOptions = useMemo(() => {
+    return Array.from({ length: 24 }, (_, i) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - i);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      const label = `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+      return { value, label };
+    });
+  }, []);
+
+  // 현재 선택된 월 표시용
+  const currentMonthLabel = useMemo(() => {
+    const [year, month] = selectedMonth.split("-");
+    return `${year}년 ${parseInt(month)}월`;
+  }, [selectedMonth]);
+
+  // 이전/다음 월 이동
+  const goToPreviousMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const newDate = new Date(year, month - 2, 1);
+    setSelectedMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, "0")}`);
+  };
+
+  const goToNextMonth = () => {
+    const [year, month] = selectedMonth.split("-").map(Number);
+    const newDate = new Date(year, month, 1);
+    const now = new Date();
+    // 미래 월은 선택 불가
+    if (newDate <= now) {
+      setSelectedMonth(`${newDate.getFullYear()}-${String(newDate.getMonth() + 1).padStart(2, "0")}`);
+    }
+  };
+
+  // 현재 월인지 확인
+  const isCurrentMonth = useMemo(() => {
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return selectedMonth === current;
+  }, [selectedMonth]);
+
   useEffect(() => {
     fetchTransactions();
-  }, [typeFilter]);
+  }, [selectedMonth]);
 
   async function fetchTransactions() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (typeFilter !== "all") params.set("type", typeFilter);
+      params.set("month", selectedMonth);
 
       const res = await fetch(`/api/transactions?${params}`);
       const data = await res.json();
@@ -121,15 +170,46 @@ export default function FinancePage() {
     }
   }
 
-  const totalRevenue = transactions
-    .filter((t) => t.type === "REVENUE")
-    .reduce((sum, t) => sum + t.amount, 0);
+  // 수입 거래
+  const revenueTransactions = useMemo(() =>
+    transactions.filter((t) => t.type === "REVENUE"),
+  [transactions]);
 
-  const totalExpense = transactions
-    .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + t.amount, 0);
+  // 지출 거래
+  const expenseTransactions = useMemo(() =>
+    transactions.filter((t) => t.type === "EXPENSE"),
+  [transactions]);
 
+  const totalRevenue = revenueTransactions.reduce((sum, t) => sum + t.amount, 0);
+  const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
   const netProfit = totalRevenue - totalExpense;
+
+  // 카테고리별 그룹핑
+  const revenueByCategory = useMemo(() => {
+    const grouped: Record<string, { label: string; total: number; count: number }> = {};
+    revenueTransactions.forEach((t) => {
+      if (!grouped[t.category]) {
+        const cat = REVENUE_CATEGORIES.find((c) => c.value === t.category);
+        grouped[t.category] = { label: cat?.label || t.category, total: 0, count: 0 };
+      }
+      grouped[t.category].total += t.amount;
+      grouped[t.category].count += 1;
+    });
+    return Object.entries(grouped).sort((a, b) => b[1].total - a[1].total);
+  }, [revenueTransactions]);
+
+  const expenseByCategory = useMemo(() => {
+    const grouped: Record<string, { label: string; total: number; count: number }> = {};
+    expenseTransactions.forEach((t) => {
+      if (!grouped[t.category]) {
+        const cat = EXPENSE_CATEGORIES.find((c) => c.value === t.category);
+        grouped[t.category] = { label: cat?.label || t.category, total: 0, count: 0 };
+      }
+      grouped[t.category].total += t.amount;
+      grouped[t.category].count += 1;
+    });
+    return Object.entries(grouped).sort((a, b) => b[1].total - a[1].total);
+  }, [expenseTransactions]);
 
   const getCategoryLabel = (type: string, category: string) => {
     const categories = type === "REVENUE" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
@@ -152,7 +232,7 @@ export default function FinancePage() {
 
   const handleEdit = async () => {
     if (!editingTransaction) return;
-    
+
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/transactions/${editingTransaction.id}`, {
@@ -190,7 +270,7 @@ export default function FinancePage() {
 
   const handleDelete = async () => {
     if (!deletingId) return;
-    
+
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/transactions/${deletingId}`, {
@@ -214,7 +294,7 @@ export default function FinancePage() {
 
   const togglePaymentStatus = async (tx: Transaction) => {
     const newStatus = tx.paymentStatus === "COMPLETED" ? "PENDING" : "COMPLETED";
-    
+
     try {
       const res = await fetch(`/api/transactions/${tx.id}`, {
         method: "PATCH",
@@ -233,7 +313,80 @@ export default function FinancePage() {
     }
   };
 
-  const categories = editForm.type === "REVENUE" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
+  // 거래 테이블 렌더링 컴포넌트
+  const TransactionTable = ({ items, type }: { items: Transaction[]; type: "REVENUE" | "EXPENSE" }) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-[80px]">일자</TableHead>
+          <TableHead>카테고리</TableHead>
+          <TableHead>메모</TableHead>
+          <TableHead className="text-right">금액</TableHead>
+          <TableHead className="w-[70px]">상태</TableHead>
+          <TableHead className="w-[40px]"></TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((tx) => (
+          <TableRow key={tx.id} className="group">
+            <TableCell className="text-muted-foreground text-sm">
+              {new Date(tx.date).getDate()}일
+            </TableCell>
+            <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
+            <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
+              {tx.memo || tx.client?.name || tx.project?.name || "-"}
+            </TableCell>
+            <TableCell className={`text-right font-medium ${type === "REVENUE" ? "text-emerald-600" : "text-red-600"}`}>
+              {formatCurrency(tx.amount)}
+            </TableCell>
+            <TableCell>
+              <button
+                onClick={() => togglePaymentStatus(tx)}
+                className="hover:opacity-70 transition-opacity"
+              >
+                {tx.paymentStatus === "COMPLETED" ? (
+                  <Badge variant="success" className="cursor-pointer text-xs px-1.5">
+                    완료
+                  </Badge>
+                ) : (
+                  <Badge variant="warning" className="cursor-pointer text-xs px-1.5">
+                    대기
+                  </Badge>
+                )}
+              </button>
+            </TableCell>
+            <TableCell>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openEditDialog(tx)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    수정
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => openDeleteDialog(tx.id)}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    삭제
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
 
   return (
     <div className="space-y-6">
@@ -242,7 +395,7 @@ export default function FinancePage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">재무 관리</h1>
           <p className="text-muted-foreground mt-1">
-            수익과 비용을 관리합니다.
+            월별 수익과 비용을 한눈에 관리합니다.
           </p>
         </div>
         <div className="flex gap-2">
@@ -261,32 +414,75 @@ export default function FinancePage() {
         </div>
       </div>
 
+      {/* 월 선택 */}
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium">조회 기간</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={goToPreviousMonth}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToNextMonth}
+                disabled={isCurrentMonth}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
               <ArrowUpRight className="h-4 w-4" />
-              총 수익
+              {currentMonthLabel} 수입
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
               {formatCurrency(totalRevenue)}
             </div>
+            <p className="text-xs text-emerald-600/70 mt-1">
+              {revenueTransactions.length}건
+            </p>
           </CardContent>
         </Card>
         <Card className="bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-2">
               <ArrowDownRight className="h-4 w-4" />
-              총 비용
+              {currentMonthLabel} 지출
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-700 dark:text-red-300">
               {formatCurrency(totalExpense)}
             </div>
+            <p className="text-xs text-red-600/70 mt-1">
+              {expenseTransactions.length}건
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -297,7 +493,7 @@ export default function FinancePage() {
               ) : (
                 <TrendingDown className="h-4 w-4 text-red-600" />
               )}
-              순이익
+              {currentMonthLabel} 순이익
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -308,129 +504,83 @@ export default function FinancePage() {
         </Card>
       </div>
 
-      {/* Filter */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="유형" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="REVENUE">수익</SelectItem>
-                <SelectItem value="EXPENSE">비용</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {/* 수입/지출 2단 레이아웃 */}
+      {loading ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-[400px]" />
+          <Skeleton className="h-[400px]" />
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* 수입 섹션 */}
+          <Card>
+            <CardHeader className="border-b bg-emerald-50/50 dark:bg-emerald-950/10 pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                  <ArrowUpRight className="h-5 w-5" />
+                  수입
+                </CardTitle>
+                <Badge variant="success" className="text-base px-3">
+                  {formatCurrency(totalRevenue)}
+                </Badge>
+              </div>
+              {revenueByCategory.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {revenueByCategory.map(([category, data]) => (
+                    <Badge key={category} variant="outline" className="text-xs font-normal">
+                      {data.label}: {formatCurrency(data.total)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              {revenueTransactions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>{currentMonthLabel} 수입 내역이 없습니다</p>
+                </div>
+              ) : (
+                <TransactionTable items={revenueTransactions} type="REVENUE" />
+              )}
+            </CardContent>
+          </Card>
 
-      {/* Transactions List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>거래 내역</CardTitle>
-          <CardDescription>모든 수익 및 비용 내역 (클릭하여 수정/삭제)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center py-12">
-              <DollarSign className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">거래 내역이 없습니다</h3>
-              <Button asChild className="mt-4">
-                <Link href="/finance/new">
-                  <Plus className="h-4 w-4 mr-2" />
-                  거래 추가
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>일자</TableHead>
-                  <TableHead>유형</TableHead>
-                  <TableHead>카테고리</TableHead>
-                  <TableHead>메모</TableHead>
-                  <TableHead className="text-right">금액</TableHead>
-                  <TableHead>상태</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((tx) => (
-                  <TableRow key={tx.id} className="group">
-                    <TableCell>{formatDate(tx.date)}</TableCell>
-                    <TableCell>
-                      <Badge variant={tx.type === "REVENUE" ? "success" : "destructive"}>
-                        {tx.type === "REVENUE" ? "수익" : "비용"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{getCategoryLabel(tx.type, tx.category)}</TableCell>
-                    <TableCell className="text-muted-foreground max-w-[200px] truncate">
-                      {tx.memo || tx.client?.name || tx.project?.name || "-"}
-                    </TableCell>
-                    <TableCell className={`text-right font-medium ${tx.type === "REVENUE" ? "text-emerald-600" : "text-red-600"}`}>
-                      {tx.type === "REVENUE" ? "+" : "-"}{formatCurrency(tx.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        onClick={() => togglePaymentStatus(tx)}
-                        className="flex items-center gap-1 hover:opacity-70 transition-opacity"
-                      >
-                        {tx.paymentStatus === "COMPLETED" ? (
-                          <Badge variant="success" className="cursor-pointer">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            완료
-                          </Badge>
-                        ) : (
-                          <Badge variant="warning" className="cursor-pointer">
-                            <Clock className="h-3 w-3 mr-1" />
-                            대기
-                          </Badge>
-                        )}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditDialog(tx)}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            수정
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => openDeleteDialog(tx.id)}
-                            className="text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            삭제
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          {/* 지출 섹션 */}
+          <Card>
+            <CardHeader className="border-b bg-red-50/50 dark:bg-red-950/10 pb-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <ArrowDownRight className="h-5 w-5" />
+                  지출
+                </CardTitle>
+                <Badge variant="destructive" className="text-base px-3">
+                  {formatCurrency(totalExpense)}
+                </Badge>
+              </div>
+              {expenseByCategory.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {expenseByCategory.map(([category, data]) => (
+                    <Badge key={category} variant="outline" className="text-xs font-normal">
+                      {data.label}: {formatCurrency(data.total)}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              {expenseTransactions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>{currentMonthLabel} 지출 내역이 없습니다</p>
+                </div>
+              ) : (
+                <TransactionTable items={expenseTransactions} type="EXPENSE" />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

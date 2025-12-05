@@ -5,10 +5,22 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
+    const month = searchParams.get("month"); // Format: YYYY-MM
 
     const where: Record<string, unknown> = {};
     if (type && type !== "all") {
       where.type = type;
+    }
+
+    // 월별 필터링
+    if (month) {
+      const [year, monthNum] = month.split("-").map(Number);
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0, 23, 59, 59, 999);
+      where.date = {
+        gte: startDate,
+        lte: endDate,
+      };
     }
 
     const transactions = await prisma.transaction.findMany({
