@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,9 @@ export default function BulkEntryPage() {
   
   const [saving, setSaving] = useState(false);
 
+  // Refs for input navigation
+  const amountInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
   // 월 옵션 생성 (최근 12개월)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
     const date = new Date();
@@ -128,12 +131,36 @@ export default function BulkEntryPage() {
     .reduce((sum, e) => sum + e.amount, 0);
 
   // 금액 입력 추가
-  const addAmountField = () => {
+  const addAmountField = useCallback(() => {
+    const newId = crypto.randomUUID();
     setCurrentAmounts(prev => [
       ...prev,
-      { id: crypto.randomUUID(), amount: "", memo: "" }
+      { id: newId, amount: "", memo: "" }
     ]);
-  };
+    // 새 필드에 포커스
+    setTimeout(() => {
+      amountInputRefs.current[newId]?.focus();
+    }, 10);
+    return newId;
+  }, []);
+
+  // Enter 키로 다음 필드 추가 및 이동
+  const handleAmountKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, currentId: string, currentIndex: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      // 마지막 필드인 경우 새 필드 추가
+      if (currentIndex === currentAmounts.length - 1) {
+        addAmountField();
+      } else {
+        // 다음 필드로 포커스 이동
+        const nextItem = currentAmounts[currentIndex + 1];
+        if (nextItem) {
+          amountInputRefs.current[nextItem.id]?.focus();
+        }
+      }
+    }
+  }, [currentAmounts, addAmountField]);
 
   // 금액 입력 제거
   const removeAmountField = (id: string) => {
@@ -231,7 +258,7 @@ export default function BulkEntryPage() {
               수입/지출 입력
             </h1>
             <p className="text-muted-foreground text-sm">
-              카테고리별로 금액을 입력하세요
+              카테고리별로 금액을 입력하세요 (Enter로 다음 칸 추가)
             </p>
           </div>
         </div>
@@ -295,11 +322,14 @@ export default function BulkEntryPage() {
                 <div key={item.id} className="flex gap-2">
                   <div className="flex-1 relative">
                     <Input
+                      ref={(el) => { amountInputRefs.current[item.id] = el; }}
                       type="number"
                       placeholder="금액"
                       value={item.amount}
                       onChange={(e) => updateAmount(item.id, "amount", e.target.value)}
+                      onKeyDown={(e) => handleAmountKeyDown(e, item.id, index)}
                       className="pr-8 text-right font-medium"
+                      autoFocus={index === 0}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
                       원
@@ -307,9 +337,22 @@ export default function BulkEntryPage() {
                   </div>
                   <Input
                     type="text"
-                    placeholder="메모"
+                    placeholder="메모 (선택)"
                     value={item.memo}
                     onChange={(e) => updateAmount(item.id, "memo", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (index === currentAmounts.length - 1) {
+                          addAmountField();
+                        } else {
+                          const nextItem = currentAmounts[index + 1];
+                          if (nextItem) {
+                            amountInputRefs.current[nextItem.id]?.focus();
+                          }
+                        }
+                      }
+                    }}
                     className="w-32"
                   />
                   {currentAmounts.length > 1 && (
