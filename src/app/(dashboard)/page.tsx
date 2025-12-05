@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatCurrencyCompact, formatDate, getDaysSince } from "@/lib/utils";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 
 interface DashboardData {
   summary: {
@@ -75,43 +75,40 @@ interface DashboardData {
   }>;
 }
 
+async function fetchDashboard(): Promise<DashboardData> {
+  const res = await fetch("/api/dashboard", {
+    next: { revalidate: 30 }, // 30초 캐싱
+  });
+  if (!res.ok) {
+    throw new Error("Failed to fetch dashboard");
+  }
+  const json = await res.json();
+  if (json.error || !json.summary) {
+    throw new Error(json.error || "Invalid dashboard data");
+  }
+  return json;
+}
+
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: fetchDashboard,
+    staleTime: 30 * 1000, // 30초간 fresh 상태 유지
+    gcTime: 5 * 60 * 1000, // 5분간 캐시 유지
+    refetchOnWindowFocus: false, // 포커스 시 자동 리페치 비활성화
+  });
 
-  useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const res = await fetch("/api/dashboard");
-        const json = await res.json();
-        // API 오류 응답 체크
-        if (json.error || !json.summary) {
-          console.error("Dashboard API error:", json.error);
-          setData(null);
-        } else {
-          setData(json);
-        }
-      } catch (error) {
-        console.error("Failed to fetch dashboard:", error);
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchDashboard();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return <DashboardSkeleton />;
   }
 
-  if (!data || !data.summary) {
+  if (error || !data || !data.summary) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <p className="text-muted-foreground">데이터를 불러올 수 없습니다.</p>
-          <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">
+          <Button onClick={() => refetch()} className="mt-4" variant="outline">
             다시 시도
           </Button>
         </div>

@@ -25,14 +25,17 @@ model CalendarEvent {
   type          String
   color         String?
   memo          String?
-  googleEventId String?   @unique  // Google Calendar event ID for sync
-  syncedAt      DateTime?           // Last synced with Google
+  googleEventId String?   @unique // Google Calendar event ID for sync
+  syncedAt      DateTime? // Last synced with Google
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   projectId     String?
   userId        String?
   Project       Project?  @relation(fields: [projectId], references: [id])
   User          User?     @relation(fields: [userId], references: [id])
+
+  @@index([date])
+  @@index([userId])
 }
 
 model Client {
@@ -108,6 +111,10 @@ model Project {
   User              User?               @relation(fields: [managerId], references: [id])
   ProjectInfluencer ProjectInfluencer[]
   Transaction       Transaction[]
+
+  @@index([status])
+  @@index([endDate])
+  @@index([clientId])
 }
 
 model ProjectInfluencer {
@@ -126,6 +133,8 @@ model ProjectInfluencer {
   Project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, influencerId])
+  @@index([paymentStatus])
+  @@index([paymentDueDate])
 }
 
 model Transaction {
@@ -146,22 +155,27 @@ model Transaction {
   Client        Client?     @relation(fields: [clientId], references: [id])
   Influencer    Influencer? @relation(fields: [influencerId], references: [id])
   Project       Project?    @relation(fields: [projectId], references: [id])
+
+  @@index([date, type])
+  @@index([type, paymentStatus])
+  @@index([clientId])
+  @@index([projectId])
 }
 
 model User {
-  id                    String          @id @default(cuid())
-  email                 String          @unique
-  password              String
-  name                  String
-  role                  String          @default("MEMBER")
-  googleAccessToken     String?         // Google OAuth access token
-  googleRefreshToken    String?         // Google OAuth refresh token
-  googleTokenExpiry     DateTime?       // Token expiry time
-  googleCalendarId      String?         // Selected Google Calendar ID
-  googleSyncEnabled     Boolean         @default(false)  // Enable/disable sync
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-  Activity              Activity[]
-  CalendarEvent         CalendarEvent[]
-  Project               Project[]
+  id                 String          @id @default(cuid())
+  email              String          @unique
+  password           String
+  name               String
+  role               String          @default("MEMBER")
+  googleAccessToken  String? // Google OAuth access token
+  googleRefreshToken String? // Google OAuth refresh token
+  googleTokenExpiry  DateTime? // Token expiry time
+  googleCalendarId   String? // Selected Google Calendar ID
+  googleSyncEnabled  Boolean         @default(false) // Enable/disable sync
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  Activity           Activity[]
+  CalendarEvent      CalendarEvent[]
+  Project            Project[]
 }
