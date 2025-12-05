@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,12 @@ const navigation = [
     href: "/calendar",
     icon: Calendar,
     description: "일정 관리",
+  },
+  {
+    name: "팀 To-Do",
+    href: "/todo",
+    icon: CheckSquare,
+    description: "팀 할일 관리",
   },
 ];
 
