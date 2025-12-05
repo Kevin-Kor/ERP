@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
@@ -19,7 +19,6 @@ import {
   UserPlus,
   Download,
   Save,
-  GripVertical,
   Pencil,
   X,
 } from "lucide-react";
@@ -58,8 +57,9 @@ export default function TodoPage() {
   const [newMemberName, setNewMemberName] = useState("");
   const [editingColumnIndex, setEditingColumnIndex] = useState<number | null>(null);
   const [editingColumnName, setEditingColumnName] = useState("");
-  const memberInputRef = useRef<HTMLInputElement>(null);
-  const columnInputRef = useRef<HTMLInputElement>(null);
+
+  // Refs for input navigation
+  const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   // Load data from localStorage
   useEffect(() => {
@@ -78,6 +78,49 @@ export default function TodoPage() {
     setData(newData);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
   }, []);
+
+  // Get input ref key
+  const getInputRefKey = (memberId: string, colIndex: number) => `${memberId}-${colIndex}`;
+
+  // Focus next input (horizontal navigation)
+  const focusNextInput = useCallback((memberId: string, currentColIndex: number) => {
+    const nextColIndex = currentColIndex + 1;
+
+    // If there's a next column, focus it
+    if (nextColIndex < data.columns.length) {
+      const nextKey = getInputRefKey(memberId, nextColIndex);
+      setTimeout(() => {
+        inputRefs.current[nextKey]?.focus();
+      }, 10);
+    } else {
+      // Last column - add 3 more columns and focus the first new one
+      const newColumns = [...data.columns];
+      const startIndex = newColumns.length;
+
+      for (let i = 0; i < 3; i++) {
+        newColumns.push(`할일 ${startIndex + i + 1}`);
+      }
+
+      const newMembers = data.members.map((member) => {
+        const newTasks = { ...member.tasks };
+        for (let i = 0; i < 3; i++) {
+          newTasks[startIndex + i] = [];
+        }
+        return { ...member, tasks: newTasks };
+      });
+
+      saveData({
+        columns: newColumns,
+        members: newMembers,
+      });
+
+      // Focus the first new column after state update
+      setTimeout(() => {
+        const nextKey = getInputRefKey(memberId, startIndex);
+        inputRefs.current[nextKey]?.focus();
+      }, 50);
+    }
+  }, [data.columns, data.members, saveData]);
 
   // Add member
   const handleAddMember = () => {
@@ -117,7 +160,7 @@ export default function TodoPage() {
     }
   };
 
-  // Add column
+  // Add column manually
   const handleAddColumn = () => {
     const newColumnName = `할일 ${data.columns.length + 1}`;
     const newColumns = [...data.columns, newColumnName];
@@ -239,8 +282,6 @@ export default function TodoPage() {
     taskId: string,
     newText: string
   ) => {
-    if (!newText.trim()) return;
-
     const newMembers = data.members.map((member) => {
       if (member.id !== memberId) return member;
 
@@ -249,7 +290,7 @@ export default function TodoPage() {
         tasks: {
           ...member.tasks,
           [columnIndex]: member.tasks[columnIndex].map((task) =>
-            task.id === taskId ? { ...task, text: newText.trim() } : task
+            task.id === taskId ? { ...task, text: newText } : task
           ),
         },
       };
@@ -313,7 +354,7 @@ export default function TodoPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">팀 To-Do</h1>
           <p className="text-muted-foreground mt-1">
-            담당자별 할일을 관리합니다. Enter 키로 빠르게 추가하세요.
+            담당자별 할일을 관리합니다. Enter로 다음 칸 이동, 마지막 칸에서 Enter시 새 컬럼 추가
           </p>
         </div>
         <div className="flex gap-2">
@@ -400,6 +441,10 @@ export default function TodoPage() {
                         onToggleTask={handleToggleTask}
                         onUpdateTask={handleUpdateTaskText}
                         onDeleteTask={handleDeleteTask}
+                        onEnterPress={() => focusNextInput(member.id, colIndex)}
+                        inputRef={(el) => {
+                          inputRefs.current[getInputRefKey(member.id, colIndex)] = el;
+                        }}
                       />
                     ))}
 
@@ -428,7 +473,6 @@ export default function TodoPage() {
           </DialogHeader>
           <div className="py-4">
             <Input
-              ref={memberInputRef}
               placeholder="이름 입력"
               value={newMemberName}
               onChange={(e) => setNewMemberName(e.target.value)}
@@ -453,7 +497,6 @@ export default function TodoPage() {
           </DialogHeader>
           <div className="py-4">
             <Input
-              ref={columnInputRef}
               placeholder="컬럼 이름"
               value={editingColumnName}
               onChange={(e) => setEditingColumnName(e.target.value)}
@@ -488,6 +531,8 @@ interface TaskCellProps {
   onToggleTask: (memberId: string, columnIndex: number, taskId: string) => void;
   onUpdateTask: (memberId: string, columnIndex: number, taskId: string, text: string) => void;
   onDeleteTask: (memberId: string, columnIndex: number, taskId: string) => void;
+  onEnterPress: () => void;
+  inputRef: (el: HTMLInputElement | null) => void;
 }
 
 function TaskCell({
@@ -498,15 +543,27 @@ function TaskCell({
   onToggleTask,
   onUpdateTask,
   onDeleteTask,
+  onEnterPress,
+  inputRef,
 }: TaskCellProps) {
   const [newTaskText, setNewTaskText] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isComposing, setIsComposing] = useState(false);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && newTaskText.trim()) {
-      onAddTask(memberId, columnIndex, newTaskText);
-      setNewTaskText("");
-      // Keep focus on input for continuous entry
+    // Ignore Enter during IME composition (Korean, Japanese, etc.)
+    if (isComposing) return;
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      // Add task if there's text
+      if (newTaskText.trim()) {
+        onAddTask(memberId, columnIndex, newTaskText.trim());
+        setNewTaskText("");
+      }
+
+      // Move to next column
+      onEnterPress();
     }
   };
 
@@ -546,13 +603,16 @@ function TaskCell({
       ))}
 
       {/* Add Task Input */}
-      <Input
+      <input
         ref={inputRef}
-        placeholder="+ 할일 추가 (Enter)"
+        type="text"
+        placeholder="+ 할일 입력 (Enter)"
         value={newTaskText}
         onChange={(e) => setNewTaskText(e.target.value)}
         onKeyDown={handleKeyDown}
-        className="h-9 text-sm border-dashed"
+        onCompositionStart={() => setIsComposing(true)}
+        onCompositionEnd={() => setIsComposing(false)}
+        className="w-full h-9 px-3 text-sm border border-dashed rounded-lg bg-background outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
       />
     </div>
   );
