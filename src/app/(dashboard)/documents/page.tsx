@@ -48,6 +48,7 @@ import {
   Upload,
   File,
   ExternalLink,
+  Calculator,
 } from "lucide-react";
 import { formatCurrency, formatDate, STATUS_LABELS } from "@/lib/utils";
 
@@ -191,12 +192,20 @@ export default function DocumentsPage() {
             견적서, 세금계산서, 계약서를 관리합니다.
           </p>
         </div>
-        <Button asChild>
-          <Link href="/documents/new">
-            <Plus className="h-4 w-4 mr-2" />
-            새 문서
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/documents/quote-generator">
+              <Calculator className="h-4 w-4 mr-2" />
+              견적서 만들기
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href="/documents/new">
+              <Plus className="h-4 w-4 mr-2" />
+              새 문서
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filter */}
