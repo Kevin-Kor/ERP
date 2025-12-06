@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -15,6 +19,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Building2,
@@ -27,6 +40,12 @@ import {
   Edit,
   Plus,
   ArrowLeft,
+  CalendarDays,
+  Trash2,
+  Video,
+  CreditCard,
+  StickyNote,
+  ClipboardList,
 } from "lucide-react";
 import {
   formatCurrency,
@@ -35,6 +54,35 @@ import {
   STATUS_LABELS,
   INDUSTRY_OPTIONS,
 } from "@/lib/utils";
+
+// 클라이언트 관리 기록 타입
+interface VisitRecord {
+  id: string;
+  date: string;
+  memo: string;
+}
+
+interface MonthlyPayment {
+  month: string; // YYYY-MM format
+  deposit: boolean; // 선금
+  balance: boolean; // 착수금/잔금
+  memo: string;
+}
+
+interface VideoStatus {
+  id: string;
+  title: string;
+  completed: boolean;
+  completedDate: string | null;
+  memo: string;
+}
+
+interface ClientManagementRecord {
+  visits: VisitRecord[];
+  payments: MonthlyPayment[];
+  videos: VideoStatus[];
+  generalMemo: string;
+}
 
 interface ClientDetail {
   id: string;
@@ -81,10 +129,189 @@ interface ClientDetail {
   };
 }
 
+const defaultManagementRecord: ClientManagementRecord = {
+  visits: [],
+  payments: [],
+  videos: [],
+  generalMemo: "",
+};
+
 export default function ClientDetailPage() {
   const params = useParams();
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // 관리 기록 상태
+  const [managementRecord, setManagementRecord] = useState<ClientManagementRecord>(defaultManagementRecord);
+  const [isVisitDialogOpen, setIsVisitDialogOpen] = useState(false);
+  const [isVideoDialogOpen, setIsVideoDialogOpen] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [newVisitDate, setNewVisitDate] = useState("");
+  const [newVisitMemo, setNewVisitMemo] = useState("");
+  const [newVideoTitle, setNewVideoTitle] = useState("");
+  const [newVideoMemo, setNewVideoMemo] = useState("");
+  const [newPaymentMonth, setNewPaymentMonth] = useState("");
+
+  // LocalStorage 키
+  const getStorageKey = useCallback(() => {
+    return `client-management-${params.id}`;
+  }, [params.id]);
+
+  // 관리 기록 불러오기
+  const loadManagementRecord = useCallback(() => {
+    if (typeof window !== "undefined" && params.id) {
+      const saved = localStorage.getItem(getStorageKey());
+      if (saved) {
+        try {
+          setManagementRecord(JSON.parse(saved));
+        } catch {
+          setManagementRecord(defaultManagementRecord);
+        }
+      }
+    }
+  }, [getStorageKey, params.id]);
+
+  // 관리 기록 저장
+  const saveManagementRecord = useCallback((record: ClientManagementRecord) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(getStorageKey(), JSON.stringify(record));
+    }
+  }, [getStorageKey]);
+
+  // 방문 기록 추가
+  const addVisitRecord = () => {
+    if (!newVisitDate) return;
+    const newRecord: VisitRecord = {
+      id: Date.now().toString(),
+      date: newVisitDate,
+      memo: newVisitMemo,
+    };
+    const updated = {
+      ...managementRecord,
+      visits: [...managementRecord.visits, newRecord].sort((a, b) =>
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      ),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+    setNewVisitDate("");
+    setNewVisitMemo("");
+    setIsVisitDialogOpen(false);
+  };
+
+  // 방문 기록 삭제
+  const deleteVisitRecord = (id: string) => {
+    const updated = {
+      ...managementRecord,
+      visits: managementRecord.visits.filter((v) => v.id !== id),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
+
+  // 월별 결제 추가
+  const addPaymentMonth = () => {
+    if (!newPaymentMonth) return;
+    const exists = managementRecord.payments.find((p) => p.month === newPaymentMonth);
+    if (exists) {
+      alert("이미 등록된 월입니다.");
+      return;
+    }
+    const newPayment: MonthlyPayment = {
+      month: newPaymentMonth,
+      deposit: false,
+      balance: false,
+      memo: "",
+    };
+    const updated = {
+      ...managementRecord,
+      payments: [...managementRecord.payments, newPayment].sort((a, b) =>
+        b.month.localeCompare(a.month)
+      ),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+    setNewPaymentMonth("");
+    setIsPaymentDialogOpen(false);
+  };
+
+  // 월별 결제 상태 업데이트
+  const updatePayment = (month: string, field: keyof MonthlyPayment, value: boolean | string) => {
+    const updated = {
+      ...managementRecord,
+      payments: managementRecord.payments.map((p) =>
+        p.month === month ? { ...p, [field]: value } : p
+      ),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
+
+  // 월별 결제 삭제
+  const deletePayment = (month: string) => {
+    const updated = {
+      ...managementRecord,
+      payments: managementRecord.payments.filter((p) => p.month !== month),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
+
+  // 영상 추가
+  const addVideo = () => {
+    if (!newVideoTitle) return;
+    const newVideo: VideoStatus = {
+      id: Date.now().toString(),
+      title: newVideoTitle,
+      completed: false,
+      completedDate: null,
+      memo: newVideoMemo,
+    };
+    const updated = {
+      ...managementRecord,
+      videos: [...managementRecord.videos, newVideo],
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+    setNewVideoTitle("");
+    setNewVideoMemo("");
+    setIsVideoDialogOpen(false);
+  };
+
+  // 영상 완료 상태 토글
+  const toggleVideoComplete = (id: string) => {
+    const updated = {
+      ...managementRecord,
+      videos: managementRecord.videos.map((v) =>
+        v.id === id
+          ? {
+              ...v,
+              completed: !v.completed,
+              completedDate: !v.completed ? new Date().toISOString().split("T")[0] : null,
+            }
+          : v
+      ),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
+
+  // 영상 삭제
+  const deleteVideo = (id: string) => {
+    const updated = {
+      ...managementRecord,
+      videos: managementRecord.videos.filter((v) => v.id !== id),
+    };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
+
+  // 일반 메모 업데이트
+  const updateGeneralMemo = (memo: string) => {
+    const updated = { ...managementRecord, generalMemo: memo };
+    setManagementRecord(updated);
+    saveManagementRecord(updated);
+  };
 
   useEffect(() => {
     async function fetchClient() {
@@ -102,8 +329,9 @@ export default function ClientDetailPage() {
     }
     if (params.id) {
       fetchClient();
+      loadManagementRecord();
     }
-  }, [params.id]);
+  }, [params.id, loadManagementRecord]);
 
   if (loading) {
     return <ClientDetailSkeleton />;
@@ -228,10 +456,14 @@ export default function ClientDetailPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="info" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="info" className="gap-2">
             <Building2 className="h-4 w-4" />
             기본 정보
+          </TabsTrigger>
+          <TabsTrigger value="management" className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            관리 기록
           </TabsTrigger>
           <TabsTrigger value="projects" className="gap-2">
             <Briefcase className="h-4 w-4" />
@@ -311,6 +543,349 @@ export default function ClientDetailPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* 관리 기록 탭 */}
+        <TabsContent value="management">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* 방문 기록 */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarDays className="h-5 w-5" />
+                    방문 기록
+                  </CardTitle>
+                  <CardDescription>클라이언트 방문 일자를 기록합니다.</CardDescription>
+                </div>
+                <Dialog open={isVisitDialogOpen} onOpenChange={setIsVisitDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      추가
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>방문 기록 추가</DialogTitle>
+                      <DialogDescription>방문 일자와 메모를 입력하세요.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="visitDate">방문일 *</Label>
+                        <Input
+                          id="visitDate"
+                          type="date"
+                          value={newVisitDate}
+                          onChange={(e) => setNewVisitDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="visitMemo">메모</Label>
+                        <Textarea
+                          id="visitMemo"
+                          value={newVisitMemo}
+                          onChange={(e) => setNewVisitMemo(e.target.value)}
+                          placeholder="방문 관련 메모..."
+                          rows={3}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsVisitDialogOpen(false)}>
+                        취소
+                      </Button>
+                      <Button onClick={addVisitRecord} disabled={!newVisitDate}>
+                        추가
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                {managementRecord.visits.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">
+                    등록된 방문 기록이 없습니다.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {managementRecord.visits.map((visit) => (
+                      <div
+                        key={visit.id}
+                        className="flex items-start justify-between p-3 border rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium">{formatDate(visit.date)}</p>
+                          {visit.memo && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {visit.memo}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteVisitRecord(visit.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 월별 결제 현황 */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    월별 결제 현황
+                  </CardTitle>
+                  <CardDescription>월별 선금/착수금 결제 여부를 체크합니다.</CardDescription>
+                </div>
+                <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      월 추가
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>결제 월 추가</DialogTitle>
+                      <DialogDescription>관리할 월을 선택하세요.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="paymentMonth">월 선택 *</Label>
+                        <Input
+                          id="paymentMonth"
+                          type="month"
+                          value={newPaymentMonth}
+                          onChange={(e) => setNewPaymentMonth(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+                        취소
+                      </Button>
+                      <Button onClick={addPaymentMonth} disabled={!newPaymentMonth}>
+                        추가
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                {managementRecord.payments.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">
+                    등록된 결제 월이 없습니다.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {managementRecord.payments.map((payment) => {
+                      const [year, month] = payment.month.split("-");
+                      return (
+                        <div
+                          key={payment.month}
+                          className="p-3 border rounded-lg space-y-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {year}년 {month}월
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deletePayment(payment.month)}
+                              className="text-destructive hover:text-destructive h-8 w-8"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="flex gap-6">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`deposit-${payment.month}`}
+                                checked={payment.deposit}
+                                onCheckedChange={(checked) =>
+                                  updatePayment(payment.month, "deposit", checked as boolean)
+                                }
+                              />
+                              <Label
+                                htmlFor={`deposit-${payment.month}`}
+                                className="cursor-pointer"
+                              >
+                                선금
+                              </Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`balance-${payment.month}`}
+                                checked={payment.balance}
+                                onCheckedChange={(checked) =>
+                                  updatePayment(payment.month, "balance", checked as boolean)
+                                }
+                              />
+                              <Label
+                                htmlFor={`balance-${payment.month}`}
+                                className="cursor-pointer"
+                              >
+                                착수금/잔금
+                              </Label>
+                            </div>
+                          </div>
+                          <Input
+                            placeholder="메모 입력..."
+                            value={payment.memo}
+                            onChange={(e) =>
+                              updatePayment(payment.month, "memo", e.target.value)
+                            }
+                            className="text-sm"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 영상 완료 현황 */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Video className="h-5 w-5" />
+                    영상 완료 현황
+                  </CardTitle>
+                  <CardDescription>영상 제작 완료 여부를 체크합니다.</CardDescription>
+                </div>
+                <Dialog open={isVideoDialogOpen} onOpenChange={setIsVideoDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm">
+                      <Plus className="h-4 w-4 mr-1" />
+                      추가
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>영상 추가</DialogTitle>
+                      <DialogDescription>관리할 영상 정보를 입력하세요.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="videoTitle">영상 제목 *</Label>
+                        <Input
+                          id="videoTitle"
+                          value={newVideoTitle}
+                          onChange={(e) => setNewVideoTitle(e.target.value)}
+                          placeholder="예: 12월 콘텐츠 1차"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="videoMemo">메모</Label>
+                        <Textarea
+                          id="videoMemo"
+                          value={newVideoMemo}
+                          onChange={(e) => setNewVideoMemo(e.target.value)}
+                          placeholder="영상 관련 메모..."
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsVideoDialogOpen(false)}>
+                        취소
+                      </Button>
+                      <Button onClick={addVideo} disabled={!newVideoTitle}>
+                        추가
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                {managementRecord.videos.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">
+                    등록된 영상이 없습니다.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {managementRecord.videos.map((video) => (
+                      <div
+                        key={video.id}
+                        className={`flex items-start justify-between p-3 border rounded-lg ${
+                          video.completed ? "bg-green-50 border-green-200" : ""
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={video.completed}
+                            onCheckedChange={() => toggleVideoComplete(video.id)}
+                            className="mt-1"
+                          />
+                          <div>
+                            <p
+                              className={`font-medium ${
+                                video.completed ? "line-through text-muted-foreground" : ""
+                              }`}
+                            >
+                              {video.title}
+                            </p>
+                            {video.memo && (
+                              <p className="text-sm text-muted-foreground">{video.memo}</p>
+                            )}
+                            {video.completed && video.completedDate && (
+                              <p className="text-xs text-green-600 mt-1">
+                                완료: {formatDate(video.completedDate)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => deleteVideo(video.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 일반 메모 */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <StickyNote className="h-5 w-5" />
+                  관리 메모
+                </CardTitle>
+                <CardDescription>클라이언트 관련 메모를 자유롭게 작성합니다.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={managementRecord.generalMemo}
+                  onChange={(e) => updateGeneralMemo(e.target.value)}
+                  placeholder="클라이언트 관련 메모를 입력하세요..."
+                  rows={6}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  자동 저장됩니다.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="projects">
