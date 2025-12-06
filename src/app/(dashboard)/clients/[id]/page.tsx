@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -152,137 +152,185 @@ export default function ClientDetailPage() {
   const [newVideoMemo, setNewVideoMemo] = useState("");
   const [newPaymentMonth, setNewPaymentMonth] = useState("");
 
-  // LocalStorage 키
-  const getStorageKey = useCallback(() => {
-    return `client-management-${params.id}`;
+  // 관리 기록 불러오기 (API)
+  const loadManagementRecord = useCallback(async () => {
+    if (!params.id) return;
+    try {
+      const res = await fetch(`/api/clients/${params.id}/management`);
+      if (res.ok) {
+        const data = await res.json();
+        setManagementRecord(data);
+      }
+    } catch (error) {
+      console.error("Failed to load management record:", error);
+    }
   }, [params.id]);
 
-  // 관리 기록 불러오기
-  const loadManagementRecord = useCallback(() => {
-    if (typeof window !== "undefined" && params.id) {
-      const saved = localStorage.getItem(getStorageKey());
-      if (saved) {
-        try {
-          setManagementRecord(JSON.parse(saved));
-        } catch {
-          setManagementRecord(defaultManagementRecord);
-        }
-      }
-    }
-  }, [getStorageKey, params.id]);
-
-  // 관리 기록 저장
-  const saveManagementRecord = useCallback((record: ClientManagementRecord) => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(getStorageKey(), JSON.stringify(record));
-    }
-  }, [getStorageKey]);
-
   // 방문 기록 추가
-  const addVisitRecord = () => {
+  const addVisitRecord = async () => {
     if (!newVisitDate) return;
-    const newRecord: VisitRecord = {
-      id: Date.now().toString(),
-      date: newVisitDate,
-      memo: newVisitMemo,
-    };
-    const updated = {
-      ...managementRecord,
-      visits: [...managementRecord.visits, newRecord].sort((a, b) =>
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      ),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
-    setNewVisitDate("");
-    setNewVisitMemo("");
-    setIsVisitDialogOpen(false);
+    try {
+      const res = await fetch(`/api/clients/${params.id}/management`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "visit",
+          date: newVisitDate,
+          memo: newVisitMemo,
+        }),
+      });
+      if (res.ok) {
+        const newRecord = await res.json();
+        setManagementRecord((prev) => ({
+          ...prev,
+          visits: [newRecord, ...prev.visits].sort((a, b) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+          ),
+        }));
+        setNewVisitDate("");
+        setNewVisitMemo("");
+        setIsVisitDialogOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to add visit:", error);
+    }
   };
 
   // 방문 기록 삭제
-  const deleteVisitRecord = (id: string) => {
-    const updated = {
-      ...managementRecord,
-      visits: managementRecord.visits.filter((v) => v.id !== id),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+  const deleteVisitRecord = async (id: string) => {
+    try {
+      const res = await fetch(
+        `/api/clients/${params.id}/management?type=visit&recordId=${id}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setManagementRecord((prev) => ({
+          ...prev,
+          visits: prev.visits.filter((v) => v.id !== id),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to delete visit:", error);
+    }
   };
 
   // 월별 결제 추가
-  const addPaymentMonth = () => {
+  const addPaymentMonth = async () => {
     if (!newPaymentMonth) return;
     const exists = managementRecord.payments.find((p) => p.month === newPaymentMonth);
     if (exists) {
       alert("이미 등록된 월입니다.");
       return;
     }
-    const newPayment: MonthlyPayment = {
-      month: newPaymentMonth,
-      deposit: false,
-      balance: false,
-      memo: "",
-    };
-    const updated = {
-      ...managementRecord,
-      payments: [...managementRecord.payments, newPayment].sort((a, b) =>
-        b.month.localeCompare(a.month)
-      ),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
-    setNewPaymentMonth("");
-    setIsPaymentDialogOpen(false);
+    try {
+      const res = await fetch(`/api/clients/${params.id}/management`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "payment",
+          month: newPaymentMonth,
+        }),
+      });
+      if (res.ok) {
+        const newPayment = await res.json();
+        setManagementRecord((prev) => ({
+          ...prev,
+          payments: [...prev.payments, newPayment].sort((a, b) =>
+            b.month.localeCompare(a.month)
+          ),
+        }));
+        setNewPaymentMonth("");
+        setIsPaymentDialogOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to add payment:", error);
+    }
   };
 
   // 월별 결제 상태 업데이트
-  const updatePayment = (month: string, field: keyof MonthlyPayment, value: boolean | string) => {
-    const updated = {
-      ...managementRecord,
-      payments: managementRecord.payments.map((p) =>
+  const updatePayment = async (month: string, field: keyof MonthlyPayment, value: boolean | string) => {
+    const payment = managementRecord.payments.find((p) => p.month === month);
+    if (!payment) return;
+
+    // 로컬 상태 먼저 업데이트 (UX)
+    setManagementRecord((prev) => ({
+      ...prev,
+      payments: prev.payments.map((p) =>
         p.month === month ? { ...p, [field]: value } : p
       ),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+    }));
+
+    try {
+      await fetch(`/api/clients/${params.id}/management`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "payment",
+          month,
+          ...payment,
+          [field]: value,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to update payment:", error);
+    }
   };
 
   // 월별 결제 삭제
-  const deletePayment = (month: string) => {
-    const updated = {
-      ...managementRecord,
-      payments: managementRecord.payments.filter((p) => p.month !== month),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+  const deletePayment = async (month: string) => {
+    try {
+      const res = await fetch(
+        `/api/clients/${params.id}/management?type=payment&month=${month}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setManagementRecord((prev) => ({
+          ...prev,
+          payments: prev.payments.filter((p) => p.month !== month),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to delete payment:", error);
+    }
   };
 
   // 영상 추가
-  const addVideo = () => {
+  const addVideo = async () => {
     if (!newVideoTitle) return;
-    const newVideo: VideoStatus = {
-      id: Date.now().toString(),
-      title: newVideoTitle,
-      completed: false,
-      completedDate: null,
-      memo: newVideoMemo,
-    };
-    const updated = {
-      ...managementRecord,
-      videos: [...managementRecord.videos, newVideo],
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
-    setNewVideoTitle("");
-    setNewVideoMemo("");
-    setIsVideoDialogOpen(false);
+    try {
+      const res = await fetch(`/api/clients/${params.id}/management`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "video",
+          title: newVideoTitle,
+          memo: newVideoMemo,
+        }),
+      });
+      if (res.ok) {
+        const newVideo = await res.json();
+        setManagementRecord((prev) => ({
+          ...prev,
+          videos: [...prev.videos, newVideo],
+        }));
+        setNewVideoTitle("");
+        setNewVideoMemo("");
+        setIsVideoDialogOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to add video:", error);
+    }
   };
 
   // 영상 완료 상태 토글
-  const toggleVideoComplete = (id: string) => {
-    const updated = {
-      ...managementRecord,
-      videos: managementRecord.videos.map((v) =>
+  const toggleVideoComplete = async (id: string) => {
+    const video = managementRecord.videos.find((v) => v.id === id);
+    if (!video) return;
+
+    // 로컬 상태 먼저 업데이트 (UX)
+    setManagementRecord((prev) => ({
+      ...prev,
+      videos: prev.videos.map((v) =>
         v.id === id
           ? {
               ...v,
@@ -291,26 +339,65 @@ export default function ClientDetailPage() {
             }
           : v
       ),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+    }));
+
+    try {
+      await fetch(`/api/clients/${params.id}/management`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "video",
+          id,
+          completed: !video.completed,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to toggle video:", error);
+    }
   };
 
   // 영상 삭제
-  const deleteVideo = (id: string) => {
-    const updated = {
-      ...managementRecord,
-      videos: managementRecord.videos.filter((v) => v.id !== id),
-    };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+  const deleteVideo = async (id: string) => {
+    try {
+      const res = await fetch(
+        `/api/clients/${params.id}/management?type=video&recordId=${id}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setManagementRecord((prev) => ({
+          ...prev,
+          videos: prev.videos.filter((v) => v.id !== id),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to delete video:", error);
+    }
   };
 
-  // 일반 메모 업데이트
+  // 일반 메모 업데이트 (debounce를 위해 ref 사용)
+  const memoTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   const updateGeneralMemo = (memo: string) => {
-    const updated = { ...managementRecord, generalMemo: memo };
-    setManagementRecord(updated);
-    saveManagementRecord(updated);
+    setManagementRecord((prev) => ({ ...prev, generalMemo: memo }));
+
+    // Debounce API 호출
+    if (memoTimeoutRef.current) {
+      clearTimeout(memoTimeoutRef.current);
+    }
+    memoTimeoutRef.current = setTimeout(async () => {
+      try {
+        await fetch(`/api/clients/${params.id}/management`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "memo",
+            content: memo,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to update memo:", error);
+      }
+    }, 500);
   };
 
   useEffect(() => {

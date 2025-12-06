@@ -39,21 +39,25 @@ model CalendarEvent {
 }
 
 model Client {
-  id          String        @id @default(cuid())
-  name        String
-  contactName String
-  phone       String
-  email       String?
-  businessNo  String?
-  address     String?
-  industry    String?
-  status      String        @default("ACTIVE")
-  memo        String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  Document    Document[]
-  Project     Project[]
-  Transaction Transaction[]
+  id            String          @id @default(cuid())
+  name          String
+  contactName   String
+  phone         String
+  email         String?
+  businessNo    String?
+  address       String?
+  industry      String?
+  status        String          @default("ACTIVE")
+  memo          String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  Document      Document[]
+  Project       Project[]
+  Transaction   Transaction[]
+  ClientVisit   ClientVisit[]
+  ClientPayment ClientPayment[]
+  ClientVideo   ClientVideo[]
+  ClientMemo    ClientMemo?
 }
 
 model Document {
@@ -178,4 +182,93 @@ model User {
   Activity           Activity[]
   CalendarEvent      CalendarEvent[]
   Project            Project[]
+}
+
+// ==========================================
+// 클라이언트 관리 기록
+// ==========================================
+
+model ClientVisit {
+  id        String   @id @default(cuid())
+  date      DateTime
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clientId  String
+  Client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([date])
+}
+
+model ClientPayment {
+  id        String   @id @default(cuid())
+  month     String   // YYYY-MM format
+  deposit   Boolean  @default(false) // 선금
+  balance   Boolean  @default(false) // 착수금/잔금
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clientId  String
+  Client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, month])
+  @@index([clientId])
+}
+
+model ClientVideo {
+  id            String    @id @default(cuid())
+  title         String
+  completed     Boolean   @default(false)
+  completedDate DateTime?
+  memo          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  clientId      String
+  Client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+model ClientMemo {
+  id        String   @id @default(cuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clientId  String   @unique
+  Client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+// ==========================================
+// 팀 To-Do
+// ==========================================
+
+model TeamTodoColumn {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TeamTodoMember {
+  id        String         @id @default(cuid())
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  tasks     TeamTodoTask[]
+}
+
+model TeamTodoTask {
+  id          String         @id @default(cuid())
+  text        String
+  completed   Boolean        @default(false)
+  columnIndex Int            // Which column this task belongs to
+  order       Int            @default(0) // Order within the column
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  memberId    String
+  Member      TeamTodoMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId, columnIndex])
 }

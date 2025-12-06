@@ -18,9 +18,10 @@ import {
   Trash2,
   UserPlus,
   Download,
-  Save,
+  RefreshCw,
   Pencil,
   X,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
@@ -42,16 +43,13 @@ interface TodoData {
   members: Member[];
 }
 
-const generateId = () => Math.random().toString(36).substring(2, 9);
-
-const STORAGE_KEY = "erp-team-todo-data";
-
 export default function TodoPage() {
   const { toast } = useToast();
   const [data, setData] = useState<TodoData>({
-    columns: ["할일 1", "할일 2", "할일 3"],
+    columns: [],
     members: [],
   });
+  const [loading, setLoading] = useState(true);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [isEditColumnOpen, setIsEditColumnOpen] = useState(false);
   const [newMemberName, setNewMemberName] = useState("");
@@ -61,29 +59,31 @@ export default function TodoPage() {
   // Refs for input navigation
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
-  // Load data from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        setData(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load data:", e);
+  // Load data from API
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/team-todo");
+      if (res.ok) {
+        const result = await res.json();
+        setData(result);
       }
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+      toast({ title: "데이터를 불러오는데 실패했습니다", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  // Save data to localStorage
-  const saveData = useCallback((newData: TodoData) => {
-    setData(newData);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newData));
-  }, []);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // Get input ref key
   const getInputRefKey = (memberId: string, colIndex: number) => `${memberId}-${colIndex}`;
 
   // Focus next input (horizontal navigation)
-  const focusNextInput = useCallback((memberId: string, currentColIndex: number) => {
+  const focusNextInput = useCallback(async (memberId: string, currentColIndex: number) => {
     const nextColIndex = currentColIndex + 1;
 
     // If there's a next column, focus it
@@ -93,89 +93,140 @@ export default function TodoPage() {
         inputRefs.current[nextKey]?.focus();
       }, 10);
     } else {
-      // Last column - add 3 more columns and focus the first new one
-      const newColumns = [...data.columns];
-      const startIndex = newColumns.length;
+      // Last column - add 3 more columns
+      try {
+        const newColumnNames = [
+          `할일 ${data.columns.length + 1}`,
+          `할일 ${data.columns.length + 2}`,
+          `할일 ${data.columns.length + 3}`,
+        ];
 
-      for (let i = 0; i < 3; i++) {
-        newColumns.push(`할일 ${startIndex + i + 1}`);
-      }
+        const res = await fetch("/api/team-todo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "columns-bulk",
+            names: newColumnNames,
+          }),
+        });
 
-      const newMembers = data.members.map((member) => {
-        const newTasks = { ...member.tasks };
-        for (let i = 0; i < 3; i++) {
-          newTasks[startIndex + i] = [];
+        if (res.ok) {
+          const result = await res.json();
+          setData((prev) => ({
+            ...prev,
+            columns: result.columns,
+            members: prev.members.map((m) => {
+              const newTasks = { ...m.tasks };
+              for (let i = 0; i < 3; i++) {
+                newTasks[data.columns.length + i] = [];
+              }
+              return { ...m, tasks: newTasks };
+            }),
+          }));
+
+          // Focus the first new column after state update
+          setTimeout(() => {
+            const nextKey = getInputRefKey(memberId, data.columns.length);
+            inputRefs.current[nextKey]?.focus();
+          }, 50);
         }
-        return { ...member, tasks: newTasks };
-      });
-
-      saveData({
-        columns: newColumns,
-        members: newMembers,
-      });
-
-      // Focus the first new column after state update
-      setTimeout(() => {
-        const nextKey = getInputRefKey(memberId, startIndex);
-        inputRefs.current[nextKey]?.focus();
-      }, 50);
+      } catch (error) {
+        console.error("Failed to add columns:", error);
+      }
     }
-  }, [data.columns, data.members, saveData]);
+  }, [data.columns.length]);
 
   // Add member
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!newMemberName.trim()) return;
 
-    const newMember: Member = {
-      id: generateId(),
-      name: newMemberName.trim(),
-      tasks: {},
-    };
+    try {
+      const res = await fetch("/api/team-todo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "member",
+          name: newMemberName.trim(),
+        }),
+      });
 
-    data.columns.forEach((_, index) => {
-      newMember.tasks[index] = [];
-    });
+      if (res.ok) {
+        const newMember = await res.json();
+        // 컬럼 수에 맞게 빈 태스크 객체 생성
+        const tasks: { [key: number]: Task[] } = {};
+        data.columns.forEach((_, index) => {
+          tasks[index] = [];
+        });
+        newMember.tasks = tasks;
 
-    saveData({
-      ...data,
-      members: [...data.members, newMember],
-    });
+        setData((prev) => ({
+          ...prev,
+          members: [...prev.members, newMember],
+        }));
 
-    setNewMemberName("");
-    setIsAddMemberOpen(false);
-    toast({ title: "담당자가 추가되었습니다" });
+        setNewMemberName("");
+        setIsAddMemberOpen(false);
+        toast({ title: "담당자가 추가되었습니다" });
+      }
+    } catch (error) {
+      console.error("Failed to add member:", error);
+      toast({ title: "담당자 추가에 실패했습니다", variant: "destructive" });
+    }
   };
 
   // Delete member
-  const handleDeleteMember = (memberId: string) => {
+  const handleDeleteMember = async (memberId: string) => {
     const member = data.members.find((m) => m.id === memberId);
     if (!member) return;
 
     if (confirm(`"${member.name}" 담당자를 삭제하시겠습니까?`)) {
-      saveData({
-        ...data,
-        members: data.members.filter((m) => m.id !== memberId),
-      });
-      toast({ title: "담당자가 삭제되었습니다" });
+      try {
+        const res = await fetch(`/api/team-todo?type=member&id=${memberId}`, {
+          method: "DELETE",
+        });
+
+        if (res.ok) {
+          setData((prev) => ({
+            ...prev,
+            members: prev.members.filter((m) => m.id !== memberId),
+          }));
+          toast({ title: "담당자가 삭제되었습니다" });
+        }
+      } catch (error) {
+        console.error("Failed to delete member:", error);
+        toast({ title: "담당자 삭제에 실패했습니다", variant: "destructive" });
+      }
     }
   };
 
   // Add column manually
-  const handleAddColumn = () => {
-    const newColumnName = `할일 ${data.columns.length + 1}`;
-    const newColumns = [...data.columns, newColumnName];
-    const newMembers = data.members.map((member) => ({
-      ...member,
-      tasks: {
-        ...member.tasks,
-        [newColumns.length - 1]: [],
-      },
-    }));
+  const handleAddColumn = async () => {
+    try {
+      const res = await fetch("/api/team-todo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "column",
+          name: `할일 ${data.columns.length + 1}`,
+        }),
+      });
 
-    saveData({
-      columns: newColumns,
-      members: newMembers,
-    });
+      if (res.ok) {
+        setData((prev) => ({
+          ...prev,
+          columns: [...prev.columns, `할일 ${prev.columns.length + 1}`],
+          members: prev.members.map((m) => ({
+            ...m,
+            tasks: {
+              ...m.tasks,
+              [prev.columns.length]: [],
+            },
+          })),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to add column:", error);
+    }
   };
 
   // Edit column
@@ -185,23 +236,36 @@ export default function TodoPage() {
     setIsEditColumnOpen(true);
   };
 
-  const handleEditColumn = () => {
+  const handleEditColumn = async () => {
     if (!editingColumnName.trim() || editingColumnIndex === null) return;
 
-    const newColumns = [...data.columns];
-    newColumns[editingColumnIndex] = editingColumnName.trim();
+    try {
+      const res = await fetch("/api/team-todo", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "column",
+          index: editingColumnIndex,
+          name: editingColumnName.trim(),
+        }),
+      });
 
-    saveData({
-      ...data,
-      columns: newColumns,
-    });
-
-    setIsEditColumnOpen(false);
-    toast({ title: "컬럼이 수정되었습니다" });
+      if (res.ok) {
+        const result = await res.json();
+        setData((prev) => ({
+          ...prev,
+          columns: result.columns,
+        }));
+        setIsEditColumnOpen(false);
+        toast({ title: "컬럼이 수정되었습니다" });
+      }
+    } catch (error) {
+      console.error("Failed to edit column:", error);
+    }
   };
 
   // Delete column
-  const handleDeleteColumn = () => {
+  const handleDeleteColumn = async () => {
     if (editingColumnIndex === null) return;
     if (data.columns.length <= 1) {
       toast({ title: "최소 1개의 컬럼이 필요합니다", variant: "destructive" });
@@ -209,111 +273,181 @@ export default function TodoPage() {
     }
 
     if (confirm(`"${data.columns[editingColumnIndex]}" 컬럼을 삭제하시겠습니까?`)) {
-      const newColumns = data.columns.filter((_, i) => i !== editingColumnIndex);
-      const newMembers = data.members.map((member) => {
-        const newTasks: { [key: number]: Task[] } = {};
-        let newIndex = 0;
-        Object.keys(member.tasks).forEach((key) => {
-          const idx = parseInt(key);
-          if (idx !== editingColumnIndex) {
-            newTasks[newIndex] = member.tasks[idx];
-            newIndex++;
-          }
+      try {
+        const res = await fetch(`/api/team-todo?type=column&index=${editingColumnIndex}`, {
+          method: "DELETE",
         });
-        return { ...member, tasks: newTasks };
-      });
 
-      saveData({
-        columns: newColumns,
-        members: newMembers,
-      });
+        if (res.ok) {
+          const result = await res.json();
 
-      setIsEditColumnOpen(false);
-      toast({ title: "컬럼이 삭제되었습니다" });
+          // 멤버들의 태스크 인덱스 재조정
+          setData((prev) => ({
+            columns: result.columns,
+            members: prev.members.map((member) => {
+              const newTasks: { [key: number]: Task[] } = {};
+              let newIndex = 0;
+              Object.keys(member.tasks).forEach((key) => {
+                const idx = parseInt(key);
+                if (idx !== editingColumnIndex) {
+                  newTasks[newIndex] = member.tasks[idx];
+                  newIndex++;
+                }
+              });
+              return { ...member, tasks: newTasks };
+            }),
+          }));
+
+          setIsEditColumnOpen(false);
+          toast({ title: "컬럼이 삭제되었습니다" });
+        }
+      } catch (error) {
+        console.error("Failed to delete column:", error);
+      }
     }
   };
 
   // Add task
-  const handleAddTask = (memberId: string, columnIndex: number, text: string) => {
+  const handleAddTask = async (memberId: string, columnIndex: number, text: string) => {
     if (!text.trim()) return;
 
-    const newMembers = data.members.map((member) => {
-      if (member.id !== memberId) return member;
+    try {
+      const res = await fetch("/api/team-todo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "task",
+          memberId,
+          columnIndex,
+          text: text.trim(),
+        }),
+      });
 
-      const currentTasks = member.tasks[columnIndex] || [];
-      return {
-        ...member,
-        tasks: {
-          ...member.tasks,
-          [columnIndex]: [
-            ...currentTasks,
-            { id: generateId(), text: text.trim(), completed: false },
-          ],
-        },
-      };
-    });
+      if (res.ok) {
+        const newTask = await res.json();
 
-    saveData({ ...data, members: newMembers });
+        setData((prev) => ({
+          ...prev,
+          members: prev.members.map((member) => {
+            if (member.id !== memberId) return member;
+
+            const currentTasks = member.tasks[columnIndex] || [];
+            return {
+              ...member,
+              tasks: {
+                ...member.tasks,
+                [columnIndex]: [...currentTasks, newTask],
+              },
+            };
+          }),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to add task:", error);
+    }
   };
 
   // Toggle task complete
-  const handleToggleTask = (memberId: string, columnIndex: number, taskId: string) => {
-    const newMembers = data.members.map((member) => {
-      if (member.id !== memberId) return member;
+  const handleToggleTask = async (memberId: string, columnIndex: number, taskId: string) => {
+    // 로컬 상태 먼저 업데이트
+    setData((prev) => ({
+      ...prev,
+      members: prev.members.map((member) => {
+        if (member.id !== memberId) return member;
 
-      return {
-        ...member,
-        tasks: {
-          ...member.tasks,
-          [columnIndex]: member.tasks[columnIndex].map((task) =>
-            task.id === taskId ? { ...task, completed: !task.completed } : task
-          ),
-        },
-      };
-    });
+        return {
+          ...member,
+          tasks: {
+            ...member.tasks,
+            [columnIndex]: member.tasks[columnIndex].map((task) =>
+              task.id === taskId ? { ...task, completed: !task.completed } : task
+            ),
+          },
+        };
+      }),
+    }));
 
-    saveData({ ...data, members: newMembers });
+    try {
+      await fetch("/api/team-todo", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "task-toggle",
+          id: taskId,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to toggle task:", error);
+    }
   };
 
   // Update task text
-  const handleUpdateTaskText = (
+  const handleUpdateTaskText = async (
     memberId: string,
     columnIndex: number,
     taskId: string,
     newText: string
   ) => {
-    const newMembers = data.members.map((member) => {
-      if (member.id !== memberId) return member;
+    // 로컬 상태 먼저 업데이트
+    setData((prev) => ({
+      ...prev,
+      members: prev.members.map((member) => {
+        if (member.id !== memberId) return member;
 
-      return {
-        ...member,
-        tasks: {
-          ...member.tasks,
-          [columnIndex]: member.tasks[columnIndex].map((task) =>
-            task.id === taskId ? { ...task, text: newText } : task
-          ),
-        },
-      };
-    });
+        return {
+          ...member,
+          tasks: {
+            ...member.tasks,
+            [columnIndex]: member.tasks[columnIndex].map((task) =>
+              task.id === taskId ? { ...task, text: newText } : task
+            ),
+          },
+        };
+      }),
+    }));
 
-    saveData({ ...data, members: newMembers });
+    // Debounced API call would be better here
+    try {
+      await fetch("/api/team-todo", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "task",
+          id: taskId,
+          text: newText,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to update task:", error);
+    }
   };
 
   // Delete task
-  const handleDeleteTask = (memberId: string, columnIndex: number, taskId: string) => {
-    const newMembers = data.members.map((member) => {
-      if (member.id !== memberId) return member;
+  const handleDeleteTask = async (memberId: string, columnIndex: number, taskId: string) => {
+    try {
+      const res = await fetch(`/api/team-todo?type=task&id=${taskId}`, {
+        method: "DELETE",
+      });
 
-      return {
-        ...member,
-        tasks: {
-          ...member.tasks,
-          [columnIndex]: member.tasks[columnIndex].filter((task) => task.id !== taskId),
-        },
-      };
-    });
+      if (res.ok) {
+        setData((prev) => ({
+          ...prev,
+          members: prev.members.map((member) => {
+            if (member.id !== memberId) return member;
 
-    saveData({ ...data, members: newMembers });
+            return {
+              ...member,
+              tasks: {
+                ...member.tasks,
+                [columnIndex]: member.tasks[columnIndex].filter((task) => task.id !== taskId),
+              },
+            };
+          }),
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
   };
 
   // Export to CSV
@@ -341,11 +475,20 @@ export default function TodoPage() {
     toast({ title: "CSV 파일로 내보내기 완료" });
   };
 
-  // Manual save
-  const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    toast({ title: "저장되었습니다" });
+  // Refresh data
+  const handleRefresh = () => {
+    setLoading(true);
+    fetchData();
+    toast({ title: "데이터를 새로고침했습니다" });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -358,9 +501,9 @@ export default function TodoPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleSave}>
-            <Save className="h-4 w-4 mr-2" />
-            저장
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            새로고침
           </Button>
           <Button variant="outline" size="sm" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
