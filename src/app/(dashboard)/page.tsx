@@ -38,6 +38,7 @@ import {
   CheckCircle,
   Loader2,
   Banknote,
+  ListTodo,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyCompact, formatDate, getDaysSince } from "@/lib/utils";
 import Link from "next/link";
@@ -114,6 +115,23 @@ async function fetchDashboard(): Promise<DashboardData> {
   return json;
 }
 
+interface TodoData {
+  columns: string[];
+  members: Array<{
+    id: string;
+    name: string;
+    tasks: { [key: number]: Array<{ id: string; text: string; completed: boolean }> };
+  }>;
+}
+
+async function fetchTodos(): Promise<TodoData> {
+  const res = await fetch("/api/team-todo");
+  if (!res.ok) {
+    throw new Error("Failed to fetch todos");
+  }
+  return res.json();
+}
+
 export default function DashboardPage() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["dashboard"],
@@ -122,6 +140,17 @@ export default function DashboardPage() {
     gcTime: 5 * 60 * 1000, // 5분간 캐시 유지
     refetchOnWindowFocus: false, // 포커스 시 자동 리페치 비활성화
   });
+
+  const { data: todoData } = useQuery({
+    queryKey: ["team-todo"],
+    queryFn: fetchTodos,
+    staleTime: 30 * 1000,
+  });
+
+  // 미완료 투두 개수 계산
+  const pendingTodoCount = todoData?.members.reduce((total, member) => {
+    return total + Object.values(member.tasks).flat().filter(task => !task.completed).length;
+  }, 0) || 0;
 
   // 미수 관리 상태
   const [deletingReceivableId, setDeletingReceivableId] = useState<string | null>(null);
@@ -372,11 +401,32 @@ export default function DashboardPage() {
               </Link>
             )}
 
+            {/* 팀 To-Do */}
+            {pendingTodoCount > 0 && (
+              <Link href="/team-todo" className="block">
+                <div className="flex items-center justify-between p-4 rounded-lg bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30">
+                      <ListTodo className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium">팀 To-Do {pendingTodoCount}건</p>
+                      <p className="text-sm text-muted-foreground">
+                        미완료 작업
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                </div>
+              </Link>
+            )}
+
             {data.actions.unpaidCount === 0 &&
               data.actions.pendingSettlementsCount === 0 &&
-              data.actions.unissuedInvoicesCount === 0 && (
+              data.actions.unissuedInvoicesCount === 0 &&
+              pendingTodoCount === 0 && (
                 <p className="text-center text-muted-foreground py-4">
-                  🎉 모든 항목이 처리되었습니다!
+                  모든 항목이 처리되었습니다!
                 </p>
               )}
           </div>

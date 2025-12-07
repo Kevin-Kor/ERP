@@ -699,31 +699,23 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {revenueByCategory.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedRevenueCategory === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedRevenueCategory(null)}
-                    className="h-8"
+                <div className="mt-3">
+                  <Select
+                    value={selectedRevenueCategory || "all"}
+                    onValueChange={(value) => setSelectedRevenueCategory(value === "all" ? null : value)}
                   >
-                    전체
-                  </Button>
-                  {revenueByCategory.map(([category, data]) => (
-                    <Button
-                      key={category}
-                      variant={selectedRevenueCategory === category ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedRevenueCategory(
-                        selectedRevenueCategory === category ? null : category
-                      )}
-                      className={`h-8 ${selectedRevenueCategory === category ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-                    >
-                      {data.label}
-                      <span className="ml-1.5 text-xs opacity-70">
-                        {formatCurrency(data.total)}
-                      </span>
-                    </Button>
-                  ))}
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="카테고리 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체 ({formatCurrency(totalRevenue)})</SelectItem>
+                      {revenueByCategory.map(([category, data]) => (
+                        <SelectItem key={category} value={category}>
+                          {data.label} ({formatCurrency(data.total)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </CardHeader>
@@ -752,31 +744,23 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {expenseByCategory.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant={selectedExpenseCategory === null ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedExpenseCategory(null)}
-                    className="h-8"
+                <div className="mt-3">
+                  <Select
+                    value={selectedExpenseCategory || "all"}
+                    onValueChange={(value) => setSelectedExpenseCategory(value === "all" ? null : value)}
                   >
-                    전체
-                  </Button>
-                  {expenseByCategory.map(([category, data]) => (
-                    <Button
-                      key={category}
-                      variant={selectedExpenseCategory === category ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setSelectedExpenseCategory(
-                        selectedExpenseCategory === category ? null : category
-                      )}
-                      className={`h-8 ${selectedExpenseCategory === category ? 'bg-red-600 hover:bg-red-700' : ''}`}
-                    >
-                      {data.label}
-                      <span className="ml-1.5 text-xs opacity-70">
-                        {formatCurrency(data.total)}
-                      </span>
-                    </Button>
-                  ))}
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="카테고리 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체 ({formatCurrency(totalExpense)})</SelectItem>
+                      {expenseByCategory.map(([category, data]) => (
+                        <SelectItem key={category} value={category}>
+                          {data.label} ({formatCurrency(data.total)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
             </CardHeader>
