@@ -118,6 +118,10 @@ export default function FinancePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  // Category filter state
+  const [selectedRevenueCategory, setSelectedRevenueCategory] = useState<string | null>(null);
+  const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string | null>(null);
+
   // Fixed vendor (고정업체) modal state
   const [isAddRevenueDialogOpen, setIsAddRevenueDialogOpen] = useState(false);
   const [fixedVendors, setFixedVendors] = useState<FixedVendor[]>([]);
@@ -336,6 +340,27 @@ export default function FinancePage() {
   const expenseTransactions = useMemo(() =>
     transactions.filter((t) => t.type === "EXPENSE"),
   [transactions]);
+
+  // 필터된 수입 거래
+  const filteredRevenueTransactions = useMemo(() =>
+    selectedRevenueCategory
+      ? revenueTransactions.filter((t) => t.category === selectedRevenueCategory)
+      : revenueTransactions,
+  [revenueTransactions, selectedRevenueCategory]);
+
+  // 필터된 지출 거래
+  const filteredExpenseTransactions = useMemo(() =>
+    selectedExpenseCategory
+      ? expenseTransactions.filter((t) => t.category === selectedExpenseCategory)
+      : expenseTransactions,
+  [expenseTransactions, selectedExpenseCategory]);
+
+  // 미수금 (대기 상태인 수입)
+  const receivables = useMemo(() =>
+    transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus === "PENDING"),
+  [transactions]);
+
+  const totalReceivables = receivables.reduce((sum, t) => sum + t.amount, 0);
 
   const totalRevenue = revenueTransactions.reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -602,41 +627,41 @@ export default function FinancePage() {
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900">
+        <Card className="border-2 border-emerald-500 bg-white dark:bg-gray-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
               <ArrowUpRight className="h-4 w-4" />
               {currentMonthLabel} 수입
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+            <div className="text-3xl font-bold text-emerald-600">
               {formatCurrency(totalRevenue)}
             </div>
-            <p className="text-xs text-emerald-600/70 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               {revenueTransactions.length}건
             </p>
           </CardContent>
         </Card>
-        <Card className="bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900">
+        <Card className="border-2 border-red-500 bg-white dark:bg-gray-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-red-600 flex items-center gap-2">
               <ArrowDownRight className="h-4 w-4" />
               {currentMonthLabel} 지출
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-700 dark:text-red-300">
+            <div className="text-3xl font-bold text-red-600">
               {formatCurrency(totalExpense)}
             </div>
-            <p className="text-xs text-red-600/70 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               {expenseTransactions.length}건
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-2 border-gray-300 bg-white dark:bg-gray-900">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
               {netProfit >= 0 ? (
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
               ) : (
@@ -646,7 +671,7 @@ export default function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${netProfit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+            <div className={`text-3xl font-bold ${netProfit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
               {formatCurrency(netProfit)}
             </div>
           </CardContent>
@@ -663,9 +688,9 @@ export default function FinancePage() {
         <div className="grid gap-6 lg:grid-cols-2">
           {/* 수입 섹션 */}
           <Card>
-            <CardHeader className="border-b bg-emerald-50/50 dark:bg-emerald-950/10 pb-4">
+            <CardHeader className="border-b pb-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+                <CardTitle className="text-lg flex items-center gap-2 text-emerald-600">
                   <ArrowUpRight className="h-5 w-5" />
                   수입
                 </CardTitle>
@@ -674,33 +699,51 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {revenueByCategory.length > 0 && (
-                <div className="mt-3 space-y-1">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant={selectedRevenueCategory === null ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedRevenueCategory(null)}
+                    className="h-8"
+                  >
+                    전체
+                  </Button>
                   {revenueByCategory.map(([category, data]) => (
-                    <div key={category} className="flex items-center justify-between text-sm">
-                      <span className="text-emerald-700/70 dark:text-emerald-400/70">{data.label}</span>
-                      <span className="font-medium text-emerald-700 dark:text-emerald-400">{formatCurrency(data.total)}</span>
-                    </div>
+                    <Button
+                      key={category}
+                      variant={selectedRevenueCategory === category ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedRevenueCategory(
+                        selectedRevenueCategory === category ? null : category
+                      )}
+                      className={`h-8 ${selectedRevenueCategory === category ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
+                    >
+                      {data.label}
+                      <span className="ml-1.5 text-xs opacity-70">
+                        {formatCurrency(data.total)}
+                      </span>
+                    </Button>
                   ))}
                 </div>
               )}
             </CardHeader>
             <CardContent className="p-0">
-              {revenueTransactions.length === 0 ? (
+              {filteredRevenueTransactions.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>{currentMonthLabel} 수입 내역이 없습니다</p>
                 </div>
               ) : (
-                <TransactionTable items={revenueTransactions} type="REVENUE" />
+                <TransactionTable items={filteredRevenueTransactions} type="REVENUE" />
               )}
             </CardContent>
           </Card>
 
           {/* 지출 섹션 */}
           <Card>
-            <CardHeader className="border-b bg-red-50/50 dark:bg-red-950/10 pb-4">
+            <CardHeader className="border-b pb-4">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2 text-red-700 dark:text-red-400">
+                <CardTitle className="text-lg flex items-center gap-2 text-red-600">
                   <ArrowDownRight className="h-5 w-5" />
                   지출
                 </CardTitle>
@@ -709,28 +752,108 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {expenseByCategory.length > 0 && (
-                <div className="mt-3 space-y-1">
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant={selectedExpenseCategory === null ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedExpenseCategory(null)}
+                    className="h-8"
+                  >
+                    전체
+                  </Button>
                   {expenseByCategory.map(([category, data]) => (
-                    <div key={category} className="flex items-center justify-between text-sm">
-                      <span className="text-red-700/70 dark:text-red-400/70">{data.label}</span>
-                      <span className="font-medium text-red-700 dark:text-red-400">{formatCurrency(data.total)}</span>
-                    </div>
+                    <Button
+                      key={category}
+                      variant={selectedExpenseCategory === category ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedExpenseCategory(
+                        selectedExpenseCategory === category ? null : category
+                      )}
+                      className={`h-8 ${selectedExpenseCategory === category ? 'bg-red-600 hover:bg-red-700' : ''}`}
+                    >
+                      {data.label}
+                      <span className="ml-1.5 text-xs opacity-70">
+                        {formatCurrency(data.total)}
+                      </span>
+                    </Button>
                   ))}
                 </div>
               )}
             </CardHeader>
             <CardContent className="p-0">
-              {expenseTransactions.length === 0 ? (
+              {filteredExpenseTransactions.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <DollarSign className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>{currentMonthLabel} 지출 내역이 없습니다</p>
                 </div>
               ) : (
-                <TransactionTable items={expenseTransactions} type="EXPENSE" />
+                <TransactionTable items={filteredExpenseTransactions} type="EXPENSE" />
               )}
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* 미수금 관리 섹션 */}
+      {receivables.length > 0 && (
+        <Card className="border-2 border-amber-400">
+          <CardHeader className="border-b pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2 text-amber-600">
+                <Clock className="h-5 w-5" />
+                미수금 관리
+              </CardTitle>
+              <Badge className="text-base px-3 bg-amber-500 hover:bg-amber-600">
+                {formatCurrency(totalReceivables)}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              아직 입금되지 않은 수입 {receivables.length}건
+            </p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px]">일자</TableHead>
+                  <TableHead>카테고리</TableHead>
+                  <TableHead>메모/업체</TableHead>
+                  <TableHead className="text-right">금액</TableHead>
+                  <TableHead className="w-[100px]">상태 변경</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {receivables.map((tx) => (
+                  <TableRow key={tx.id} className="group">
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(tx.date).getDate()}일
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {getCategoryLabel(tx.type, tx.category)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
+                      {tx.memo || tx.client?.name || "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-amber-600">
+                      {formatCurrency(tx.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => togglePaymentStatus(tx)}
+                        className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                      >
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        입금 완료
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
       {/* Edit Dialog */}
