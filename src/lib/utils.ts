@@ -103,15 +103,21 @@ export const STATUS_COLORS = {
 
 // 카테고리 라벨
 export const REVENUE_CATEGORIES = [
+  { value: "FIXED_MANAGEMENT", label: "고정 관리업체" },
+  { value: "PROJECT_MANAGEMENT", label: "건별 관리업체" },
+  { value: "AD_REVENUE", label: "광고비 수입" },
+  { value: "PLATFORM_REVENUE", label: "플랫폼 수입" },
   { value: "CAMPAIGN_FEE", label: "캠페인 대행료" },
   { value: "CONTENT_FEE", label: "콘텐츠 제작비" },
   { value: "CONSULTING", label: "컨설팅/기타" },
-  { value: "OTHER_REVENUE", label: "기타 수익" },
+  { value: "OTHER_REVENUE", label: "기타 수입" },
 ] as const;
 
 export const EXPENSE_CATEGORIES = [
   // 업무 관련
+  { value: "INFLUENCER_COST", label: "인플루언서 비용", group: "업무" },
   { value: "INFLUENCER_FEE", label: "인플루언서 비용", group: "업무" },
+  { value: "AD_EXPENSE", label: "광고비", group: "업무" },
   { value: "AD_SPEND", label: "광고비", group: "업무" },
   { value: "CONTENT_PRODUCTION", label: "콘텐츠 제작비", group: "업무" },
   // 운영/인건비
@@ -120,6 +126,7 @@ export const EXPENSE_CATEGORIES = [
   { value: "OFFICE_RENT", label: "임대료", group: "운영" },
   // 일반 지출
   { value: "FOOD", label: "식비", group: "일반" },
+  { value: "TRANSPORT", label: "교통비", group: "일반" },
   { value: "TRANSPORTATION", label: "교통비", group: "일반" },
   { value: "COMMUNICATION", label: "통신비", group: "일반" },
   { value: "SUPPLIES", label: "소모품비", group: "일반" },
@@ -128,6 +135,7 @@ export const EXPENSE_CATEGORIES = [
   { value: "EDUCATION", label: "교육비", group: "일반" },
   { value: "SUBSCRIPTION", label: "구독료", group: "일반" },
   { value: "TAX", label: "세금/공과금", group: "일반" },
+  { value: "OTHER_EXPENSE", label: "기타 지출", group: "일반" },
   { value: "OTHER", label: "기타", group: "일반" },
 ] as const;
 
