@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,9 +23,16 @@ import {
   X,
   Receipt,
   Calculator,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
+
+interface FixedVendor {
+  id: string;
+  name: string;
+  monthlyFee: number | null;
+}
 
 // 지출 카테고리
 const EXPENSE_CATEGORIES = [
@@ -67,19 +74,39 @@ export default function BulkEntryPage() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
-  
+
   // 현재 입력 중인 금액들 (선택된 카테고리)
-  const [currentAmounts, setCurrentAmounts] = useState<{ id: string; amount: string; memo: string }[]>([
+  const [currentAmounts, setCurrentAmounts] = useState<{ id: string; amount: string; memo: string; vendorId?: string }[]>([
     { id: crypto.randomUUID(), amount: "", memo: "" }
   ]);
-  
+
   // 모든 저장된 항목들
   const [allEntries, setAllEntries] = useState<EntryItem[]>([]);
-  
+
   const [saving, setSaving] = useState(false);
+
+  // 고정업체 목록
+  const [fixedVendors, setFixedVendors] = useState<FixedVendor[]>([]);
 
   // Refs for input navigation
   const amountInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // 고정업체 목록 불러오기
+  useEffect(() => {
+    async function fetchFixedVendors() {
+      try {
+        const res = await fetch("/api/clients?isFixedVendor=true&status=ACTIVE");
+        const data = await res.json();
+        setFixedVendors(data.clients || []);
+      } catch (error) {
+        console.error("Failed to fetch fixed vendors:", error);
+      }
+    }
+    fetchFixedVendors();
+  }, []);
+
+  // 고정 관리업체 카테고리인지 확인
+  const isFixedManagementCategory = selectedCategory === "FIXED_MANAGEMENT";
 
   // 월 옵션 생성 (최근 12개월)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -101,9 +128,9 @@ export default function BulkEntryPage() {
 
   const selectedCategoryInfo = getCategoryInfo(selectedCategory);
 
-  // 현재 카테고리 소계
+  // 현재 카테고리 소계 (만원 단위를 원 단위로 변환)
   const currentSubtotal = currentAmounts.reduce(
-    (sum, item) => sum + (parseFloat(item.amount) || 0),
+    (sum, item) => sum + ((parseFloat(item.amount) || 0) * 10000),
     0
   );
 
@@ -169,10 +196,25 @@ export default function BulkEntryPage() {
   };
 
   // 금액 업데이트
-  const updateAmount = (id: string, field: "amount" | "memo", value: string) => {
+  const updateAmount = (id: string, field: "amount" | "memo" | "vendorId", value: string) => {
     setCurrentAmounts(prev =>
       prev.map(item => (item.id === id ? { ...item, [field]: value } : item))
     );
+  };
+
+  // 고정업체 선택 시 금액 자동 입력
+  const handleVendorSelect = (itemId: string, vendorId: string) => {
+    const vendor = fixedVendors.find(v => v.id === vendorId);
+    if (vendor) {
+      const amountInMan = vendor.monthlyFee ? (vendor.monthlyFee / 10000).toString() : "";
+      setCurrentAmounts(prev =>
+        prev.map(item =>
+          item.id === itemId
+            ? { ...item, vendorId, amount: amountInMan, memo: vendor.name }
+            : item
+        )
+      );
+    }
   };
 
   // 현재 카테고리 항목들을 전체 목록에 추가
@@ -187,7 +229,7 @@ export default function BulkEntryPage() {
       categoryId: selectedCategory,
       categoryLabel: selectedCategoryInfo.label,
       type: selectedCategoryInfo.type,
-      amount: parseFloat(item.amount),
+      amount: parseFloat(item.amount) * 10000, // 만원 -> 원 변환
       memo: item.memo,
     }));
 
@@ -317,9 +359,43 @@ export default function BulkEntryPage() {
           {/* 금액 입력 필드들 */}
           {selectedCategory && (
             <div className="space-y-3">
-              <label className="text-sm font-medium">금액</label>
+              <label className="text-sm font-medium">
+                {isFixedManagementCategory ? "고정업체 선택" : "금액"}
+              </label>
               {currentAmounts.map((item, index) => (
                 <div key={item.id} className="flex gap-2">
+                  {/* 고정 관리업체일 때 업체 선택 드롭다운 */}
+                  {isFixedManagementCategory && (
+                    <Select
+                      value={item.vendorId || ""}
+                      onValueChange={(value) => handleVendorSelect(item.id, value)}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="업체 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {fixedVendors.length === 0 ? (
+                          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                            등록된 고정업체가 없습니다
+                          </div>
+                        ) : (
+                          fixedVendors.map((vendor) => (
+                            <SelectItem key={vendor.id} value={vendor.id}>
+                              <div className="flex items-center gap-2">
+                                <Building2 className="h-3 w-3" />
+                                {vendor.name}
+                                {vendor.monthlyFee && (
+                                  <span className="text-muted-foreground text-xs">
+                                    ({(vendor.monthlyFee / 10000).toFixed(0)}만원)
+                                  </span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <div className="flex-1 relative">
                     <Input
                       ref={(el) => { amountInputRefs.current[item.id] = el; }}
@@ -328,11 +404,11 @@ export default function BulkEntryPage() {
                       value={item.amount}
                       onChange={(e) => updateAmount(item.id, "amount", e.target.value)}
                       onKeyDown={(e) => handleAmountKeyDown(e, item.id, index)}
-                      className="pr-8 text-right font-medium"
-                      autoFocus={index === 0}
+                      className="pr-12 text-right font-medium"
+                      autoFocus={index === 0 && !isFixedManagementCategory}
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                      원
+                      만원
                     </span>
                   </div>
                   <Input
