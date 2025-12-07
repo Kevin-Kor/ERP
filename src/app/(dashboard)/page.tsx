@@ -1,9 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   TrendingUp,
   TrendingDown,
@@ -15,6 +34,10 @@ import {
   Users,
   ArrowRight,
   Clock,
+  Trash2,
+  CheckCircle,
+  Loader2,
+  Banknote,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyCompact, formatDate, getDaysSince } from "@/lib/utils";
 import Link from "next/link";
@@ -34,8 +57,10 @@ interface DashboardData {
       id: string;
       date: string;
       amount: number;
-      client: { name: string } | null;
-      project: { name: string } | null;
+      category: string;
+      memo: string | null;
+      client: { id: string; name: string } | null;
+      project: { id: string; name: string } | null;
     }>;
     pendingSettlementsCount: number;
     pendingSettlementsAmount: number;
@@ -97,6 +122,63 @@ export default function DashboardPage() {
     gcTime: 5 * 60 * 1000, // 5분간 캐시 유지
     refetchOnWindowFocus: false, // 포커스 시 자동 리페치 비활성화
   });
+
+  // 미수 관리 상태
+  const [deletingReceivableId, setDeletingReceivableId] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [markingCompletedId, setMarkingCompletedId] = useState<string | null>(null);
+
+  // 미수금 삭제 (거래 삭제)
+  const handleDeleteReceivable = async () => {
+    if (!deletingReceivableId) return;
+
+    setIsProcessing(true);
+    try {
+      const res = await fetch(`/api/transactions/${deletingReceivableId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        setIsDeleteDialogOpen(false);
+        refetch();
+      } else {
+        alert("삭제에 실패했습니다.");
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert("삭제 중 오류가 발생했습니다.");
+    } finally {
+      setIsProcessing(false);
+      setDeletingReceivableId(null);
+    }
+  };
+
+  // 미수금 입금 완료 처리
+  const handleMarkCompleted = async (id: string) => {
+    setMarkingCompletedId(id);
+    try {
+      const res = await fetch(`/api/transactions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentStatus: "COMPLETED",
+          paymentDate: new Date().toISOString(),
+        }),
+      });
+
+      if (res.ok) {
+        refetch();
+      } else {
+        alert("처리에 실패했습니다.");
+      }
+    } catch (error) {
+      console.error("Mark completed error:", error);
+      alert("처리 중 오류가 발생했습니다.");
+    } finally {
+      setMarkingCompletedId(null);
+    }
+  };
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -438,6 +520,118 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 미수금 관리 */}
+      {data.actions.unpaidCount > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Banknote className="h-5 w-5 text-amber-600" />
+                  미수금 관리
+                </CardTitle>
+                <CardDescription>
+                  총 {data.actions.unpaidCount}건, {formatCurrencyCompact(data.actions.unpaidAmount)}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>일자</TableHead>
+                  <TableHead>클라이언트</TableHead>
+                  <TableHead>메모</TableHead>
+                  <TableHead className="text-right">금액</TableHead>
+                  <TableHead className="w-[120px]">작업</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.actions.unpaidTransactions.map((tx) => (
+                  <TableRow key={tx.id}>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {formatDate(tx.date)}
+                    </TableCell>
+                    <TableCell>
+                      {tx.client ? (
+                        <Link
+                          href={`/clients/${tx.client.id}`}
+                          className="font-medium hover:text-primary"
+                        >
+                          {tx.client.name}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                      {tx.memo || tx.project?.name || "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-amber-600">
+                      {formatCurrency(tx.amount)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => handleMarkCompleted(tx.id)}
+                          disabled={markingCompletedId === tx.id}
+                          title="입금 완료"
+                        >
+                          {markingCompletedId === tx.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-red-50"
+                          onClick={() => {
+                            setDeletingReceivableId(tx.id);
+                            setIsDeleteDialogOpen(true);
+                          }}
+                          title="삭제"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 미수금 삭제 확인 Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>미수금 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 미수금 내역을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteReceivable}
+              disabled={isProcessing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isProcessing && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

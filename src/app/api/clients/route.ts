@@ -12,6 +12,8 @@ const clientSchema = z.object({
   industry: z.string().optional(),
   status: z.enum(["ACTIVE", "DORMANT", "TERMINATED"]).default("ACTIVE"),
   memo: z.string().optional(),
+  isFixedVendor: z.boolean().default(false),
+  monthlyFee: z.number().nullable().optional(),
 });
 
 // GET - List all clients
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
+    const isFixedVendor = searchParams.get("isFixedVendor");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
 
@@ -27,6 +30,11 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       where.status = status;
+    }
+
+    // 고정업체 필터
+    if (isFixedVendor === "true") {
+      where.isFixedVendor = true;
     }
 
     if (search) {
