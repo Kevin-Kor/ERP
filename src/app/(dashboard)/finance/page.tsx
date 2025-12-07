@@ -555,30 +555,12 @@ export default function FinancePage() {
             월별 수익과 비용을 한눈에 관리합니다.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/finance/bulk">
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              여러 건 입력
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            className="text-emerald-600 border-emerald-600 hover:bg-emerald-50"
-            onClick={() => setIsAddRevenueDialogOpen(true)}
-          >
-            <ArrowUpRight className="h-4 w-4 mr-2" />
-            수입 추가
-          </Button>
-          <Button
-            variant="outline"
-            className="text-red-600 border-red-600 hover:bg-red-50"
-            onClick={() => setIsAddExpenseDialogOpen(true)}
-          >
-            <ArrowDownRight className="h-4 w-4 mr-2" />
-            지출 추가
-          </Button>
-        </div>
+        <Button variant="outline" asChild>
+          <Link href="/finance/bulk">
+            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            수입/지출 입력
+          </Link>
+        </Button>
       </div>
 
       {/* 월 선택 */}
@@ -692,11 +674,12 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {revenueByCategory.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-3">
+                <div className="mt-3 space-y-1">
                   {revenueByCategory.map(([category, data]) => (
-                    <Badge key={category} variant="outline" className="text-xs font-normal">
-                      {data.label}: {formatCurrency(data.total)}
-                    </Badge>
+                    <div key={category} className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-700/70 dark:text-emerald-400/70">{data.label}</span>
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">{formatCurrency(data.total)}</span>
+                    </div>
                   ))}
                 </div>
               )}
@@ -726,11 +709,12 @@ export default function FinancePage() {
                 </Badge>
               </div>
               {expenseByCategory.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-3">
+                <div className="mt-3 space-y-1">
                   {expenseByCategory.map(([category, data]) => (
-                    <Badge key={category} variant="outline" className="text-xs font-normal">
-                      {data.label}: {formatCurrency(data.total)}
-                    </Badge>
+                    <div key={category} className="flex items-center justify-between text-sm">
+                      <span className="text-red-700/70 dark:text-red-400/70">{data.label}</span>
+                      <span className="font-medium text-red-700 dark:text-red-400">{formatCurrency(data.total)}</span>
+                    </div>
                   ))}
                 </div>
               )}
