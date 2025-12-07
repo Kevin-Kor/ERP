@@ -47,6 +47,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   TrendingUp,
   TrendingDown,
@@ -64,6 +65,8 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Building2,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency, formatDate, REVENUE_CATEGORIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS } from "@/lib/utils";
@@ -80,6 +83,12 @@ interface Transaction {
   client: { id: string; name: string } | null;
   project: { id: string; name: string } | null;
   influencer: { id: string; name: string } | null;
+}
+
+interface FixedVendor {
+  id: string;
+  name: string;
+  monthlyFee: number | null;
 }
 
 export default function FinancePage() {
@@ -108,6 +117,31 @@ export default function FinancePage() {
   // Delete confirmation state
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  // Fixed vendor (고정업체) modal state
+  const [isAddRevenueDialogOpen, setIsAddRevenueDialogOpen] = useState(false);
+  const [fixedVendors, setFixedVendors] = useState<FixedVendor[]>([]);
+  const [selectedVendor, setSelectedVendor] = useState<string>("");
+  const [newRevenueForm, setNewRevenueForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    clientId: "",
+    amount: 0, // 실제 금액 (원 단위)
+    amountInMan: "", // 만원 단위 입력값 (문자열)
+    isManualAmount: false,
+    category: "CAMPAIGN_FEE",
+    memo: "",
+    isReceivable: false, // 미수 여부
+  });
+
+  // Add expense modal state
+  const [isAddExpenseDialogOpen, setIsAddExpenseDialogOpen] = useState(false);
+  const [newExpenseForm, setNewExpenseForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    category: "FOOD",
+    amount: 0,
+    amountInMan: "",
+    memo: "",
+  });
 
   // 월 옵션 생성 (최근 24개월)
   const monthOptions = useMemo(() => {
@@ -152,6 +186,7 @@ export default function FinancePage() {
 
   useEffect(() => {
     fetchTransactions();
+    fetchFixedVendors();
   }, [selectedMonth]);
 
   async function fetchTransactions() {
@@ -169,6 +204,128 @@ export default function FinancePage() {
       setLoading(false);
     }
   }
+
+  // 고정업체 목록 불러오기
+  async function fetchFixedVendors() {
+    try {
+      const res = await fetch("/api/clients?isFixedVendor=true&status=ACTIVE");
+      const data = await res.json();
+      setFixedVendors(data.clients || []);
+    } catch (error) {
+      console.error("Failed to fetch fixed vendors:", error);
+    }
+  }
+
+  // 고정업체 선택 시 금액 자동 입력
+  const handleVendorSelect = (vendorId: string) => {
+    setSelectedVendor(vendorId);
+    const vendor = fixedVendors.find(v => v.id === vendorId);
+    if (vendor && vendor.monthlyFee && !newRevenueForm.isManualAmount) {
+      const amountInMan = (vendor.monthlyFee / 10000).toString();
+      setNewRevenueForm(prev => ({
+        ...prev,
+        clientId: vendorId,
+        amount: vendor.monthlyFee || 0,
+        amountInMan,
+      }));
+    } else {
+      setNewRevenueForm(prev => ({
+        ...prev,
+        clientId: vendorId,
+      }));
+    }
+  };
+
+  // 수입 추가
+  const handleAddRevenue = async () => {
+    if (!newRevenueForm.clientId || newRevenueForm.amount <= 0) {
+      alert("클라이언트와 금액을 입력해주세요.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: newRevenueForm.date,
+          type: "REVENUE",
+          category: newRevenueForm.category,
+          amount: newRevenueForm.amount,
+          paymentStatus: newRevenueForm.isReceivable ? "PENDING" : "COMPLETED",
+          memo: newRevenueForm.memo || null,
+          clientId: newRevenueForm.clientId,
+        }),
+      });
+
+      if (res.ok) {
+        setIsAddRevenueDialogOpen(false);
+        setNewRevenueForm({
+          date: new Date().toISOString().split("T")[0],
+          clientId: "",
+          amount: 0,
+          amountInMan: "",
+          isManualAmount: false,
+          category: "CAMPAIGN_FEE",
+          memo: "",
+          isReceivable: false,
+        });
+        setSelectedVendor("");
+        fetchTransactions();
+      } else {
+        alert("수입 추가에 실패했습니다.");
+      }
+    } catch (error) {
+      console.error("Add revenue error:", error);
+      alert("수입 추가 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 지출 추가
+  const handleAddExpense = async () => {
+    if (newExpenseForm.amount <= 0) {
+      alert("금액을 입력해주세요.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: newExpenseForm.date,
+          type: "EXPENSE",
+          category: newExpenseForm.category,
+          amount: newExpenseForm.amount,
+          paymentStatus: "COMPLETED",
+          memo: newExpenseForm.memo || null,
+        }),
+      });
+
+      if (res.ok) {
+        setIsAddExpenseDialogOpen(false);
+        setNewExpenseForm({
+          date: new Date().toISOString().split("T")[0],
+          category: "FOOD",
+          amount: 0,
+          amountInMan: "",
+          memo: "",
+        });
+        fetchTransactions();
+      } else {
+        alert("지출 추가에 실패했습니다.");
+      }
+    } catch (error) {
+      console.error("Add expense error:", error);
+      alert("지출 추가 중 오류가 발생했습니다.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // 수입 거래
   const revenueTransactions = useMemo(() =>
@@ -405,11 +562,21 @@ export default function FinancePage() {
               여러 건 입력
             </Link>
           </Button>
-          <Button asChild>
-            <Link href="/finance/new">
-              <Plus className="h-4 w-4 mr-2" />
-              거래 추가
-            </Link>
+          <Button
+            variant="outline"
+            className="text-emerald-600 border-emerald-600 hover:bg-emerald-50"
+            onClick={() => setIsAddRevenueDialogOpen(true)}
+          >
+            <ArrowUpRight className="h-4 w-4 mr-2" />
+            수입 추가
+          </Button>
+          <Button
+            variant="outline"
+            className="text-red-600 border-red-600 hover:bg-red-50"
+            onClick={() => setIsAddExpenseDialogOpen(true)}
+          >
+            <ArrowDownRight className="h-4 w-4 mr-2" />
+            지출 추가
           </Button>
         </div>
       </div>
@@ -722,6 +889,263 @@ export default function FinancePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Revenue Dialog (수입 추가) */}
+      <Dialog open={isAddRevenueDialogOpen} onOpenChange={setIsAddRevenueDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <ArrowUpRight className="h-5 w-5" />
+              수입 추가
+            </DialogTitle>
+            <DialogDescription>
+              고정업체를 선택하면 금액이 자동으로 입력됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>날짜</Label>
+                <Input
+                  type="date"
+                  value={newRevenueForm.date}
+                  onChange={(e) => setNewRevenueForm({ ...newRevenueForm, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>카테고리</Label>
+                <Select
+                  value={newRevenueForm.category}
+                  onValueChange={(value) => setNewRevenueForm({ ...newRevenueForm, category: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REVENUE_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* 고정업체 선택 */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                고정업체 선택
+              </Label>
+              <Select value={selectedVendor} onValueChange={handleVendorSelect}>
+                <SelectTrigger>
+                  <SelectValue placeholder="고정업체를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fixedVendors.length === 0 ? (
+                    <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      등록된 고정업체가 없습니다.
+                      <Link href="/clients/new" className="block text-primary hover:underline mt-1">
+                        고정업체 등록하기
+                      </Link>
+                    </div>
+                  ) : (
+                    fixedVendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                        {vendor.monthlyFee && (
+                          <span className="text-muted-foreground ml-2">
+                            ({(vendor.monthlyFee / 10000).toFixed(0)}만원)
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 금액 입력 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>금액 (만원)</Label>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="manualAmount"
+                    checked={newRevenueForm.isManualAmount}
+                    onCheckedChange={(checked) => {
+                      setNewRevenueForm({
+                        ...newRevenueForm,
+                        isManualAmount: checked as boolean,
+                      });
+                    }}
+                  />
+                  <Label htmlFor="manualAmount" className="text-sm cursor-pointer flex items-center gap-1">
+                    <Pencil className="h-3 w-3" />
+                    수기 입력
+                  </Label>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="예: 50"
+                  value={newRevenueForm.amountInMan}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const amount = value ? Number(value) * 10000 : 0;
+                    setNewRevenueForm({
+                      ...newRevenueForm,
+                      amountInMan: value,
+                      amount,
+                      isManualAmount: true,
+                    });
+                  }}
+                  disabled={!newRevenueForm.isManualAmount && selectedVendor !== ""}
+                />
+                <span className="text-muted-foreground whitespace-nowrap">만원</span>
+              </div>
+              {newRevenueForm.amount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  = {formatCurrency(newRevenueForm.amount)}
+                </p>
+              )}
+            </div>
+
+            {/* 미수 체크박스 */}
+            <div className="flex items-center space-x-2 p-3 border rounded-lg bg-amber-50 border-amber-200">
+              <Checkbox
+                id="isReceivable"
+                checked={newRevenueForm.isReceivable}
+                onCheckedChange={(checked) =>
+                  setNewRevenueForm({ ...newRevenueForm, isReceivable: checked as boolean })
+                }
+              />
+              <Label htmlFor="isReceivable" className="cursor-pointer text-amber-800">
+                미수 (아직 입금되지 않음)
+              </Label>
+            </div>
+
+            <div className="space-y-2">
+              <Label>메모</Label>
+              <Textarea
+                value={newRevenueForm.memo}
+                onChange={(e) => setNewRevenueForm({ ...newRevenueForm, memo: e.target.value })}
+                placeholder="메모 입력"
+                rows={2}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsAddRevenueDialogOpen(false)} disabled={isSubmitting}>
+              취소
+            </Button>
+            <Button onClick={handleAddRevenue} disabled={isSubmitting} className="bg-emerald-600 hover:bg-emerald-700">
+              {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              추가
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Expense Dialog (지출 추가) */}
+      <Dialog open={isAddExpenseDialogOpen} onOpenChange={setIsAddExpenseDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <ArrowDownRight className="h-5 w-5" />
+              지출 추가
+            </DialogTitle>
+            <DialogDescription>
+              지출 내역을 입력하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>날짜</Label>
+                <Input
+                  type="date"
+                  value={newExpenseForm.date}
+                  onChange={(e) => setNewExpenseForm({ ...newExpenseForm, date: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>카테고리</Label>
+                <Select
+                  value={newExpenseForm.category}
+                  onValueChange={(value) => setNewExpenseForm({ ...newExpenseForm, category: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(EXPENSE_CATEGORY_GROUPS).map(([groupName, categories]) => (
+                      <div key={groupName}>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                          {groupName}
+                        </div>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* 금액 입력 */}
+            <div className="space-y-2">
+              <Label>금액 (만원)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  placeholder="예: 5"
+                  value={newExpenseForm.amountInMan}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const amount = value ? Number(value) * 10000 : 0;
+                    setNewExpenseForm({
+                      ...newExpenseForm,
+                      amountInMan: value,
+                      amount,
+                    });
+                  }}
+                />
+                <span className="text-muted-foreground whitespace-nowrap">만원</span>
+              </div>
+              {newExpenseForm.amount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  = {formatCurrency(newExpenseForm.amount)}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>메모</Label>
+              <Textarea
+                value={newExpenseForm.memo}
+                onChange={(e) => setNewExpenseForm({ ...newExpenseForm, memo: e.target.value })}
+                placeholder="메모 입력"
+                rows={2}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsAddExpenseDialogOpen(false)} disabled={isSubmitting}>
+              취소
+            </Button>
+            <Button onClick={handleAddExpense} disabled={isSubmitting} className="bg-red-600 hover:bg-red-700">
+              {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              추가
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

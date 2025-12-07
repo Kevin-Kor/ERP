@@ -49,6 +49,8 @@ model Client {
   industry      String?
   status        String          @default("ACTIVE")
   memo          String?
+  monthlyFee    Float?          // 고정업체 월정액 (만원 단위로 저장, 실제 금액)
+  isFixedVendor Boolean         @default(false) // 고정업체 여부
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
   Document      Document[]

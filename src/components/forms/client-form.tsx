@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { INDUSTRY_OPTIONS } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -30,6 +31,8 @@ const clientSchema = z.object({
   industry: z.string().optional(),
   status: z.enum(["ACTIVE", "DORMANT", "TERMINATED"]),
   memo: z.string().optional(),
+  isFixedVendor: z.boolean().default(false),
+  monthlyFee: z.number().nullable().optional(), // 만원 단위로 저장
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
@@ -61,11 +64,14 @@ export function ClientForm({ initialData, mode }: ClientFormProps) {
       industry: "",
       status: "ACTIVE",
       memo: "",
+      isFixedVendor: false,
+      monthlyFee: null,
     },
   });
 
   const industry = watch("industry");
   const status = watch("status");
+  const isFixedVendor = watch("isFixedVendor");
 
   async function onSubmit(data: ClientFormData) {
     setIsSubmitting(true);
@@ -207,6 +213,48 @@ export function ClientForm({ initialData, mode }: ClientFormProps) {
               </SelectContent>
             </Select>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 고정업체 설정 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>고정업체 설정</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isFixedVendor"
+              checked={isFixedVendor}
+              onCheckedChange={(checked) => setValue("isFixedVendor", checked as boolean)}
+            />
+            <Label htmlFor="isFixedVendor" className="cursor-pointer">
+              고정업체로 설정 (매월 자동 수입 등록용)
+            </Label>
+          </div>
+
+          {isFixedVendor && (
+            <div className="space-y-2">
+              <Label htmlFor="monthlyFee">월정액 (만원)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="monthlyFee"
+                  type="number"
+                  placeholder="예: 50 (= 50만원)"
+                  onChange={(e) => {
+                    const value = e.target.value ? Number(e.target.value) * 10000 : null;
+                    setValue("monthlyFee", value);
+                  }}
+                  defaultValue={initialData?.monthlyFee ? initialData.monthlyFee / 10000 : ""}
+                  className="w-[200px]"
+                />
+                <span className="text-muted-foreground">만원</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                재무 관리에서 고정업체 수입을 추가할 때 자동으로 입력됩니다.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

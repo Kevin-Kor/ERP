@@ -60,13 +60,17 @@ export async function GET() {
           id: true,
           date: true,
           amount: true,
+          category: true,
+          memo: true,
           Client: {
             select: {
+              id: true,
               name: true,
             },
           },
           Project: {
             select: {
+              id: true,
               name: true,
             },
           },
