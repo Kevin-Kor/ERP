@@ -1,7 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { supabaseAdmin } from "@/lib/supabase";
+
+// Allowed file types
+const ALLOWED_TYPES = [
+  // PDF
+  "application/pdf",
+  // Word
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  // Excel
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // CSV
+  "text/csv",
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  // PowerPoint
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  // Text
+  "text/plain",
+];
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,6 +42,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No document ID provided" }, { status: 400 });
     }
 
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "파일 크기가 50MB를 초과합니다." },
+        { status: 400 }
+      );
+    }
+
+    // Check file type (be lenient - allow if type is empty or matches)
+    if (file.type && !ALLOWED_TYPES.includes(file.type)) {
+      // Try to determine by extension
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      const allowedExtensions = [
+        "pdf", "doc", "docx", "xls", "xlsx", "csv",
+        "jpg", "jpeg", "png", "gif", "webp",
+        "ppt", "pptx", "txt"
+      ];
+      if (!ext || !allowedExtensions.includes(ext)) {
+        return NextResponse.json(
+          { error: "지원하지 않는 파일 형식입니다." },
+          { status: 400 }
+        );
+      }
+    }
+
     // Verify document exists
     const document = await prisma.document.findUnique({
       where: { id: documentId },
@@ -26,36 +76,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    // Create uploads directory if it doesn't exist
-    const uploadsDir = path.join(process.cwd(), "public", "uploads", "documents");
-    try {
-      await mkdir(uploadsDir, { recursive: true });
-    } catch {
-      // Directory might already exist
-    }
-
     // Generate unique filename
     const timestamp = Date.now();
-    const extension = path.extname(file.name);
+    const extension = file.name.split(".").pop() || "file";
     const safeDocNumber = document.docNumber.replace(/[^a-zA-Z0-9-]/g, "_");
-    const filename = `${safeDocNumber}_${timestamp}${extension}`;
-    const filePath = path.join(uploadsDir, filename);
+    const filename = `${safeDocNumber}_${timestamp}.${extension}`;
+    const storagePath = `documents/${filename}`;
 
-    // Save file
+    // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
+
+    // Upload to Supabase Storage
+    const { error } = await supabaseAdmin.storage
+      .from("erp-files")
+      .upload(storagePath, buffer, {
+        contentType: file.type || "application/octet-stream",
+        upsert: true,
+      });
+
+    if (error) {
+      console.error("Supabase storage error:", error);
+      return NextResponse.json(
+        { error: "파일 업로드에 실패했습니다: " + error.message },
+        { status: 500 }
+      );
+    }
+
+    // Get public URL
+    const { data: urlData } = supabaseAdmin.storage
+      .from("erp-files")
+      .getPublicUrl(storagePath);
+
+    const publicUrl = urlData.publicUrl;
 
     // Update document with file path
-    const publicPath = `/uploads/documents/${filename}`;
     await prisma.document.update({
       where: { id: documentId },
-      data: { filePath: publicPath },
+      data: { filePath: publicUrl },
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      filePath: publicPath,
+    return NextResponse.json({
+      success: true,
+      filePath: publicUrl,
     });
   } catch (error) {
     console.error("POST /api/documents/upload error:", error);
@@ -65,4 +128,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
