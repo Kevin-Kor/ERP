@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 // Allowed file types
 const ALLOWED_TYPES = [
@@ -87,8 +87,11 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    // Get Supabase client
+    const supabase = getSupabaseAdmin();
+
     // Upload to Supabase Storage
-    const { error } = await supabaseAdmin.storage
+    const { error } = await supabase.storage
       .from("erp-files")
       .upload(storagePath, buffer, {
         contentType: file.type || "application/octet-stream",
@@ -104,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabaseAdmin.storage
+    const { data: urlData } = supabase.storage
       .from("erp-files")
       .getPublicUrl(storagePath);
 
