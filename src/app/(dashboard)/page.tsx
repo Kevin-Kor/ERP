@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -141,7 +142,7 @@ export default function DashboardPage() {
     refetchOnWindowFocus: false, // 포커스 시 자동 리페치 비활성화
   });
 
-  const { data: todoData } = useQuery({
+  const { data: todoData, refetch: refetchTodos } = useQuery({
     queryKey: ["team-todo"],
     queryFn: fetchTodos,
     staleTime: 30 * 1000,
@@ -206,6 +207,23 @@ export default function DashboardPage() {
       alert("처리 중 오류가 발생했습니다.");
     } finally {
       setMarkingCompletedId(null);
+    }
+  };
+
+  // To-Do 체크 토글
+  const handleToggleTodo = async (taskId: string) => {
+    try {
+      const res = await fetch("/api/team-todo", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "task-toggle", id: taskId }),
+      });
+
+      if (res.ok) {
+        refetchTodos();
+      }
+    } catch (error) {
+      console.error("Toggle todo error:", error);
     }
   };
 
@@ -656,6 +674,62 @@ export default function DashboardPage() {
                 ))}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 팀 To-Do */}
+      {todoData && todoData.members.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <ListTodo className="h-5 w-5 text-purple-600" />
+                  팀 To-Do
+                </CardTitle>
+                <CardDescription>
+                  미완료 {pendingTodoCount}건
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/team-todo">전체 보기</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {todoData.members.map((member) => {
+                const pendingTasks = Object.values(member.tasks)
+                  .flat()
+                  .filter((task) => !task.completed);
+                if (pendingTasks.length === 0) return null;
+                return (
+                  <div key={member.id} className="space-y-2">
+                    <p className="text-sm font-medium text-muted-foreground">{member.name}</p>
+                    <div className="space-y-1">
+                      {pendingTasks.slice(0, 5).map((task) => (
+                        <div
+                          key={task.id}
+                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                        >
+                          <Checkbox
+                            checked={task.completed}
+                            onCheckedChange={() => handleToggleTodo(task.id)}
+                          />
+                          <span className="text-sm">{task.text}</span>
+                        </div>
+                      ))}
+                      {pendingTasks.length > 5 && (
+                        <p className="text-xs text-muted-foreground pl-8">
+                          +{pendingTasks.length - 5}건 더 보기
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
       )}
