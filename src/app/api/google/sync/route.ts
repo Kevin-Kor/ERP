@@ -32,6 +32,10 @@ async function getValidAccessToken(userId: string) {
   const expiry = user.googleTokenExpiry;
   const needsRefresh = !expiry || expiry.getTime() - now.getTime() < 5 * 60 * 1000;
 
+  if (needsRefresh && !user.googleRefreshToken) {
+    return null;
+  }
+
   if (needsRefresh && user.googleRefreshToken) {
     try {
       const newTokens = await refreshAccessToken(user.googleRefreshToken);
@@ -79,10 +83,22 @@ export async function GET(request: NextRequest) {
         googleSyncEnabled: true,
         googleCalendarId: true,
         googleAccessToken: true,
+        googleRefreshToken: true,
+        googleTokenExpiry: true,
       },
     });
 
-    const isConnected = !!(user?.googleAccessToken && user?.googleSyncEnabled);
+    const now = new Date();
+    const hasValidAccessToken = !!(
+      user?.googleAccessToken &&
+      (!user.googleTokenExpiry || user.googleTokenExpiry.getTime() > now.getTime())
+    );
+
+    const hasRefreshToken = !!user?.googleRefreshToken;
+    const isConnected = !!(
+      user?.googleSyncEnabled &&
+      (hasValidAccessToken || hasRefreshToken)
+    );
 
     // Get last synced events count
     const syncedCount = await prisma.calendarEvent.count({
