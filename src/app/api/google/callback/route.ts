@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getTokensFromCode } from "@/lib/google-calendar";
+import { ensureGoogleConfigured } from "@/lib/google-config";
 
 // GET - Handle OAuth callback from Google
 export async function GET(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
     const state = searchParams.get("state"); // User ID passed as state
@@ -54,6 +57,12 @@ export async function GET(request: NextRequest) {
       new URL("/calendar?google=connected", request.url)
     );
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.redirect(
+        new URL("/calendar?error=not_configured", request.url)
+      );
+    }
+
     console.error("Google OAuth callback error:", error);
     return NextResponse.redirect(
       new URL("/calendar?error=auth_failed", request.url)

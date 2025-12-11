@@ -3,10 +3,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { GoogleCalendarSync, refreshAccessToken } from "@/lib/google-calendar";
+import { ensureGoogleConfigured } from "@/lib/google-config";
 
 // GET - List user's Google Calendars
 export async function GET(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -71,6 +74,13 @@ export async function GET(request: NextRequest) {
       selectedCalendarId: user.googleCalendarId || "primary",
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("List calendars error:", error);
     return NextResponse.json(
       { error: "Failed to list calendars" },
