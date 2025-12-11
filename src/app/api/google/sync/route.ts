@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { 
-  GoogleCalendarSync, 
-  erpEventToGoogleEvent, 
+import {
+  GoogleCalendarSync,
+  erpEventToGoogleEvent,
   googleEventToErpEvent,
-  refreshAccessToken 
+  refreshAccessToken
 } from "@/lib/google-calendar";
+import { ensureGoogleConfigured } from "@/lib/google-config";
 
 // Helper to get valid access token (refresh if needed)
 async function getValidAccessToken(userId: string) {
@@ -64,6 +65,8 @@ async function getValidAccessToken(userId: string) {
 // GET - Get sync status
 export async function GET(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -95,6 +98,13 @@ export async function GET(request: NextRequest) {
       syncedEventsCount: syncedCount,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Get sync status error:", error);
     return NextResponse.json(
       { error: "Failed to get sync status" },
@@ -106,6 +116,8 @@ export async function GET(request: NextRequest) {
 // POST - Perform sync operation
 export async function POST(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -246,6 +258,13 @@ export async function POST(request: NextRequest) {
       results,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Sync error:", error);
     return NextResponse.json(
       { error: "Sync failed" },
@@ -257,6 +276,8 @@ export async function POST(request: NextRequest) {
 // PUT - Enable/disable auto-sync (webhook)
 export async function PUT(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -305,6 +326,13 @@ export async function PUT(request: NextRequest) {
       });
     }
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Auto-sync toggle error:", error);
     return NextResponse.json(
       { error: "Failed to toggle auto-sync" },
