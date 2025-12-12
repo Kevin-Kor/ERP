@@ -2,39 +2,54 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { 
-  GoogleCalendarSync, 
-  erpEventToGoogleEvent, 
+import {
+  GoogleCalendarSync,
+  erpEventToGoogleEvent,
   googleEventToErpEvent,
-  refreshAccessToken 
+  refreshAccessToken
 } from "@/lib/google-calendar";
+import { ensureGoogleConfigured } from "@/lib/google-config";
 
 // Helper to get valid access token (refresh if needed)
-async function getValidAccessToken(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      googleAccessToken: true,
-      googleRefreshToken: true,
-      googleTokenExpiry: true,
-      googleCalendarId: true,
-      googleSyncEnabled: true,
-    },
-  });
+type GoogleTokenState = {
+  googleAccessToken: string | null;
+  googleRefreshToken: string | null;
+  googleTokenExpiry: Date | null;
+  googleCalendarId: string | null;
+  googleSyncEnabled: boolean;
+} | null;
 
-  if (!user?.googleAccessToken || !user?.googleSyncEnabled) {
+async function getValidAccessToken(userId: string, user?: GoogleTokenState) {
+  const tokenState =
+    user ??
+    (await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        googleAccessToken: true,
+        googleRefreshToken: true,
+        googleTokenExpiry: true,
+        googleCalendarId: true,
+        googleSyncEnabled: true,
+      },
+    }));
+
+  if (!tokenState?.googleAccessToken || !tokenState?.googleSyncEnabled) {
     return null;
   }
 
   // Check if token is expired or will expire in 5 minutes
   const now = new Date();
-  const expiry = user.googleTokenExpiry;
+  const expiry = tokenState.googleTokenExpiry;
   const needsRefresh = !expiry || expiry.getTime() - now.getTime() < 5 * 60 * 1000;
 
-  if (needsRefresh && user.googleRefreshToken) {
+  if (needsRefresh && !tokenState.googleRefreshToken) {
+    return null;
+  }
+
+  if (needsRefresh && tokenState.googleRefreshToken) {
     try {
-      const newTokens = await refreshAccessToken(user.googleRefreshToken);
-      
+      const newTokens = await refreshAccessToken(tokenState.googleRefreshToken);
+
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -47,7 +62,7 @@ async function getValidAccessToken(userId: string) {
 
       return {
         accessToken: newTokens.access_token!,
-        calendarId: user.googleCalendarId || "primary",
+        calendarId: tokenState.googleCalendarId || "primary",
       };
     } catch (error) {
       console.error("Token refresh failed:", error);
@@ -56,14 +71,16 @@ async function getValidAccessToken(userId: string) {
   }
 
   return {
-    accessToken: user.googleAccessToken,
-    calendarId: user.googleCalendarId || "primary",
+    accessToken: tokenState.googleAccessToken,
+    calendarId: tokenState.googleCalendarId || "primary",
   };
 }
 
 // GET - Get sync status
 export async function GET(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -76,10 +93,13 @@ export async function GET(request: NextRequest) {
         googleSyncEnabled: true,
         googleCalendarId: true,
         googleAccessToken: true,
+        googleRefreshToken: true,
+        googleTokenExpiry: true,
       },
     });
 
-    const isConnected = !!(user?.googleAccessToken && user?.googleSyncEnabled);
+    const tokenData = await getValidAccessToken(session.user.id, user);
+    const isConnected = !!tokenData;
 
     // Get last synced events count
     const syncedCount = await prisma.calendarEvent.count({
@@ -91,10 +111,17 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       connected: isConnected,
-      calendarId: user?.googleCalendarId || "primary",
+      calendarId: tokenData?.calendarId || user?.googleCalendarId || "primary",
       syncedEventsCount: syncedCount,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Get sync status error:", error);
     return NextResponse.json(
       { error: "Failed to get sync status" },
@@ -106,6 +133,8 @@ export async function GET(request: NextRequest) {
 // POST - Perform sync operation
 export async function POST(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -246,6 +275,13 @@ export async function POST(request: NextRequest) {
       results,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Sync error:", error);
     return NextResponse.json(
       { error: "Sync failed" },
@@ -257,6 +293,8 @@ export async function POST(request: NextRequest) {
 // PUT - Enable/disable auto-sync (webhook)
 export async function PUT(request: NextRequest) {
   try {
+    ensureGoogleConfigured();
+
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
@@ -305,6 +343,13 @@ export async function PUT(request: NextRequest) {
       });
     }
   } catch (error) {
+    if (error instanceof Error && error.message === "Google Calendar not configured") {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 503 }
+      );
+    }
+
     console.error("Auto-sync toggle error:", error);
     return NextResponse.json(
       { error: "Failed to toggle auto-sync" },

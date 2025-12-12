@@ -1,0 +1,1411 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>공식 견적서 생성기</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --paper:#ffffff;
+      --ink:#111827;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --brand:#1d4ed8;
+      --brand2:#0ea5e9;
+      --soft:#eef2ff;
+      --danger:#dc2626;
+      --ok:#059669;
+      --shadow:0 16px 40px rgba(0,0,0,.12);
+      --radius:14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Arial, sans-serif;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; font-family:var(--sans); background:var(--bg); color:var(--ink);}
+
+    /* App layout */
+    .app{max-width:1240px; margin:18px auto 30px; padding:0 14px;}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      background:linear-gradient(135deg, #ffffff 0%, #f3f7ff 60%, #ffffff 100%);
+      border:1px solid var(--line); border-radius: var(--radius); padding:14px 14px;
+      box-shadow: 0 10px 26px rgba(0,0,0,.06);
+      position:sticky; top:10px; z-index:30;
+    }
+    .topbar .left{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+    .brandmark{
+      width:38px; height:38px; border-radius:12px;
+      background: radial-gradient(120% 120% at 30% 20%, #93c5fd 0%, #1d4ed8 55%, #0b3aa6 100%);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+    }
+    .topbar h1{margin:0; font-size:16px; font-weight:900; letter-spacing:-.2px;}
+    .topbar .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+    .topbar .right{display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;}
+
+    .btn{
+      border:1px solid var(--line); background:#fff; color:var(--ink);
+      border-radius: 12px; padding:10px 12px; font-weight:800; font-size:13px;
+      cursor:pointer; transition:.15s transform, .15s background, .15s border, .15s color;
+      display:inline-flex; align-items:center; gap:8px;
+    }
+    .btn:hover{transform:translateY(-1px); background:#fbfdff;}
+    .btn:active{transform:translateY(0px);} 
+    .btn.primary{background:var(--brand); color:#fff; border-color:rgba(0,0,0,0);}
+    .btn.primary:hover{background:#1943bf;}
+    .btn.ok{background:var(--ok); color:#fff; border-color:rgba(0,0,0,0);}
+    .btn.ok:hover{background:#047857;}
+    .btn.danger{background:var(--danger); color:#fff; border-color:rgba(0,0,0,0);}
+    .btn.danger:hover{background:#b91c1c;}
+    .btn.ghost{background:transparent;}
+    .btn .kbd{font-family:var(--mono); font-weight:900; font-size:11px; color:#334155; background:#e2e8f0; padding:2px 6px; border-radius:8px;}
+
+    .content{
+      display:grid; grid-template-columns: 420px 1fr; gap:14px; margin-top:12px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .content{grid-template-columns: 1fr; }
+      .preview-wrap{position:static !important;}
+    }
+
+    /* Input panel */
+    .panel{
+      background:#fff; border:1px solid var(--line); border-radius: var(--radius);
+      box-shadow: 0 10px 26px rgba(0,0,0,.06);
+      overflow:hidden;
+    }
+    .panel-header{
+      padding:14px 14px 10px; border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+    }
+    .panel-header .title{font-weight:900; font-size:14px;}
+    .panel-header .hint{font-size:12px; color:var(--muted); margin-top:4px; line-height:1.4;}
+    .panel-body{padding:12px 10px 12px;}
+    details{
+      border:1px solid var(--line); border-radius: 14px; background:#fff; overflow:hidden;
+      margin-bottom:10px;
+    }
+    details[open]{box-shadow: 0 6px 18px rgba(0,0,0,.06);}
+    summary{
+      list-style:none;
+      padding:12px 12px; cursor:pointer; user-select:none;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      font-weight:900; font-size:13px;
+      background:linear-gradient(180deg,#ffffff 0%, #f8fafc 100%);
+      border-bottom:1px solid var(--line);
+    }
+    summary::-webkit-details-marker{display:none;}
+    .sum-badge{
+      font-size:11px; font-weight:900; color:#1e40af;
+      background:#eef2ff; border:1px solid #c7d2fe; padding:3px 8px; border-radius:999px;
+      white-space:nowrap;
+    }
+    .sec{padding:10px 12px 12px;}
+    .grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+    .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;}
+    .full{grid-column: 1 / -1;}
+    label{display:block; font-size:12px; font-weight:900; color:#334155; margin:0 0 6px;}
+    input, textarea, select{
+      width:100%; padding:10px 10px; border:1px solid var(--line);
+      border-radius: 12px; font-size:13px; background:#fff;
+      outline:none; transition:border .15s, box-shadow .15s;
+    }
+    textarea{min-height: 44px; resize:vertical; line-height:1.35;}
+    input:focus, textarea:focus, select:focus{border-color:#93c5fd; box-shadow:0 0 0 4px rgba(147,197,253,.35);}
+    .row{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+    .help{font-size:12px; color:var(--muted); line-height:1.45; margin-top:6px;}
+    .switch{
+      display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px dashed #c7d2fe;
+      border-radius: 14px; background: #f8fafc;
+    }
+    .switch input{width:auto; padding:0; border-radius:8px;}
+    .switch .meta{font-size:12px; color:var(--muted); line-height:1.35;}
+    .hr{height:1px; background:var(--line); margin:10px 0;}
+
+    /* Items input table */
+    .items{
+      border:1px solid var(--line); border-radius: 14px; overflow:hidden; background:#fff;
+    }
+    .items .head{
+      display:grid; grid-template-columns: 110px 1fr 72px 110px 36px;
+      gap:0; padding:8px 10px; background:#f8fafc; border-bottom:1px solid var(--line);
+      font-size:11px; font-weight:900; color:#475569;
+    }
+    .items .head div{padding:2px 4px;}
+    .item-row{
+      display:grid; grid-template-columns: 110px 1fr 72px 110px 36px;
+      gap:0; padding:8px 10px; border-bottom:1px solid #f1f5f9;
+      align-items:start;
+    }
+    .item-row:last-child{border-bottom:none;}
+    .item-row select, .item-row input, .item-row textarea{
+      border-radius: 10px; padding:8px 8px; font-size:12.5px;
+    }
+    .item-row textarea{min-height: 38px;}
+    .iconbtn{
+      width:34px; height:34px; border-radius: 12px;
+      border:1px solid var(--line); background:#fff; cursor:pointer; font-weight:900;
+    }
+    .iconbtn:hover{background:#fff1f2; border-color:#fecdd3; color:var(--danger);}
+    .items-actions{display:flex; gap:8px; justify-content:flex-end; padding:10px;}
+    .pill{
+      font-size:11px; font-weight:900; border-radius:999px; padding:3px 8px;
+      border:1px solid #c7d2fe; background:#eef2ff; color:#1e40af;
+    }
+    .warn{
+      font-size:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a;
+      padding:10px 12px; border-radius: 14px; line-height:1.4;
+    }
+
+    /* Preview area */
+    .preview-wrap{
+      position:sticky; top:86px;
+    }
+    .preview-shell{
+      background:transparent;
+    }
+    .paper{
+      width: 210mm;
+      min-height: 297mm;
+      background:var(--paper);
+      border:1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      margin: 0 auto;
+      overflow:hidden;
+    }
+    .paper .pad{padding: 16mm 16mm 14mm;}
+    .doc-top{
+      display:flex; justify-content:space-between; gap:16px; align-items:flex-start;
+      padding-bottom:10mm; border-bottom:1px solid var(--line);
+    }
+    .doc-title{
+      font-size: 22px; font-weight:1000; letter-spacing:-.6px;
+      color: var(--brand);
+      margin:0;
+    }
+    .doc-meta{
+      text-align:right; font-size:11.5px; line-height:1.55; color:#0f172a;
+      min-width: 240px;
+    }
+    .doc-meta .k{color:#64748b; font-weight:900; display:inline-block; min-width:70px;}
+    .doc-meta .v{font-weight:900;}
+    .doc-mark{
+      display:flex; align-items:center; gap:10px; margin-top:6px;
+      justify-content:flex-end;
+    }
+    .mark{
+      font-family:var(--mono);
+      font-size:10.5px; font-weight:1000;
+      border:1px solid #bfdbfe; background:#eff6ff; color:#1e3a8a;
+      padding:4px 8px; border-radius:999px;
+      text-transform:uppercase;
+    }
+
+    .block-title{
+      margin: 10mm 0 4mm;
+      font-size: 13px;
+      font-weight: 1000;
+      color: #0f172a;
+      display:flex; align-items:center; gap:10px;
+    }
+    .block-title::before{
+      content:"";
+      width:10px; height:10px; border-radius:4px; background: linear-gradient(180deg, var(--brand2), var(--brand));
+    }
+    .two-col{display:grid; grid-template-columns: 1fr 1fr; gap:8mm;}
+    .card{
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: #fbfdff;
+    }
+    .card .line{font-size: 11.5px; line-height: 1.65; color:#0f172a;}
+    .card .line b{font-weight:1000;}
+    .muted{color:#64748b;}
+    .para{
+      font-size: 11.5px;
+      color:#0f172a;
+      line-height:1.7;
+      margin-top:6mm;
+    }
+
+    /* Quote table */
+    table{width:100%; border-collapse:separate; border-spacing:0;}
+    .qtable{
+      border:1px solid var(--line);
+      border-radius: 14px;
+      overflow:hidden;
+      margin-top:3mm;
+    }
+    .qtable th{
+      background:#f8fafc;
+      color:#0f172a;
+      font-size:11px;
+      font-weight:1000;
+      text-align:left;
+      padding:8px 10px;
+      border-bottom:1px solid var(--line);
+      white-space:nowrap;
+    }
+    .qtable td{
+      font-size: 11.3px;
+      color:#0f172a;
+      padding:8px 10px;
+      border-bottom:1px solid #f1f5f9;
+      vertical-align:top;
+    }
+    .qtable tbody tr:last-child td{border-bottom:none;}
+    .right{text-align:right;}
+    .sumrow td{
+      background:#fbfdff;
+      font-weight:1000;
+    }
+    .total td{
+      background:#eff6ff;
+      color:#1e3a8a;
+      font-size:12.5px;
+      font-weight:1100;
+    }
+    .qtable .desc{
+      color:#334155;
+      line-height:1.45;
+      white-space:pre-line;
+    }
+
+    /* Lists */
+    .list{
+      margin: 0; padding-left: 16px;
+      font-size: 11.5px;
+      line-height: 1.7;
+      color:#0f172a;
+    }
+    .list li{margin: 2px 0;}
+    .smallnote{
+      margin-top: 2mm;
+      font-size:10.5px;
+      color:#64748b;
+      line-height:1.55;
+    }
+    .terms{
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background:#fff;
+      margin-top:3mm;
+    }
+    .terms h4{
+      margin:0 0 6px;
+      font-size: 12px;
+      font-weight:1100;
+      color:#0f172a;
+      letter-spacing:-.2px;
+    }
+    .terms .t{
+      font-size: 11.3px;
+      color:#0f172a;
+      line-height:1.7;
+      white-space:pre-line;
+    }
+
+    .siggrid{
+      display:grid; grid-template-columns: 1fr 1fr; gap:8mm;
+      margin-top: 6mm;
+    }
+    .sigbox{
+      border:1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background:#fbfdff;
+      min-height: 44mm;
+      position:relative;
+    }
+    .sigbox .who{font-size:12px; font-weight:1100;}
+    .sigbox .lines{margin-top:4mm; font-size:11.5px; line-height:1.7; color:#0f172a;}
+    .stamp{
+      position:absolute; right:10px; bottom:10px;
+      width:32mm; height:32mm; border-radius: 16mm;
+      border:2px dashed #cbd5e1; color:#94a3b8;
+      display:flex; align-items:center; justify-content:center;
+      font-size:11px; font-weight:1100;
+    }
+    .footer{
+      margin-top: 8mm;
+      padding-top: 4mm;
+      border-top:1px solid var(--line);
+      font-size:10.5px;
+      color:#64748b;
+      display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    }
+
+    /* Print */
+    @page { size: A4; margin: 14mm; }
+    @media print{
+      body{background:#fff;}
+      .no-print{display:none !important;}
+      .app{max-width:none; margin:0; padding:0;}
+      .content{display:block;}
+      .preview-wrap{position:static;}
+      .paper{box-shadow:none; border:none; border-radius:0;}
+      .paper .pad{padding:0;}
+      .qtable{page-break-inside:avoid;}
+      details{box-shadow:none;}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- TOP BAR -->
+    <div class="topbar no-print">
+      <div class="left">
+        <div class="brandmark" aria-hidden="true"></div>
+        <div>
+          <h1>공식 견적서 생성기</h1>
+          <div class="sub">입력 → 자동 미리보기 → 인쇄(PDF). 브라우저에 자동 저장(로컬) 지원.</div>
+        </div>
+      </div>
+      <div class="right">
+        <button class="btn" id="btnSave" title="브라우저에 저장"><span>저장</span><span class="kbd">Ctrl</span><span class="kbd">S</span></button>
+        <button class="btn" id="btnLoad" title="저장된 값 불러오기"><span>불러오기</span></button>
+        <button class="btn ghost" id="btnExport" title="JSON로 내보내기"><span>JSON 내보내기</span></button>
+        <label class="btn ghost" title="JSON 불러오기" style="gap:10px;">
+          <span>JSON 불러오기</span>
+          <input id="fileImport" type="file" accept="application/json" style="display:none" />
+        </label>
+        <button class="btn primary" id="btnUpdate" title="미리보기 갱신"><span>미리보기 갱신</span></button>
+        <button class="btn ok" id="btnPrint" title="PDF로 저장/인쇄"><span>PDF 저장/인쇄</span><span class="kbd">Ctrl</span><span class="kbd">P</span></button>
+        <button class="btn danger" id="btnReset" title="입력 초기화"><span>초기화</span></button>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- INPUT PANEL -->
+      <aside class="panel no-print" aria-label="입력 패널">
+        <div class="panel-header">
+          <div class="title">입력(Editable)</div>
+          <div class="hint">현업 견적서 수준으로 “정식 기재사항 + 스코프/스펙 + 일정/검수 + 결제/권리/수정/환불”을 한 문서에 고정합니다.</div>
+        </div>
+
+        <div class="panel-body">
+          <details open>
+            <summary>
+              <span>① 문서 기본</span>
+              <span class="sum-badge">필수</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div class="full">
+                  <label>문서 제목</label>
+                  <input id="inDocTitle" type="text" value="견적서 (Quotation)" />
+                </div>
+                <div>
+                  <label>견적번호(Quote No.)</label>
+                  <input id="inQuoteNo" type="text" placeholder="예: Q-2025-001" />
+                </div>
+                <div>
+                  <label>견적일</label>
+                  <input id="inQuoteDate" type="date" />
+                </div>
+                <div>
+                  <label>유효기간(만료일)</label>
+                  <input id="inValidUntil" type="date" />
+                </div>
+                <div>
+                  <label>프로젝트/캠페인명</label>
+                  <input id="inProjectName" type="text" placeholder="예: 숏폼 패키지 제작" />
+                </div>
+                <div>
+                  <label>서비스 기간(문구)</label>
+                  <input id="inServicePeriod" type="text" placeholder="예: 2025-05-22 ~ 2025-06-07" />
+                </div>
+              </div>
+
+              <div class="hr"></div>
+              <div class="switch">
+                <input id="inVatOn" type="checkbox" checked />
+                <div>
+                  <div style="font-weight:1000; font-size:13px;">부가세(VAT) 계산</div>
+                  <div class="meta">체크 시 소계(별도) + VAT(기본 10%) + 총액(포함) 표기. 해제 시 VAT 라인 숨김.</div>
+                </div>
+              </div>
+              <div class="grid" style="margin-top:10px;">
+                <div>
+                  <label>VAT 비율(%)</label>
+                  <input id="inVatRate" type="number" min="0" step="0.1" value="10" />
+                </div>
+                <div>
+                  <label>통화</label>
+                  <select id="inCurrency">
+                    <option value="KRW" selected>KRW (₩)</option>
+                    <option value="USD">USD ($)
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="EUR">EUR (€)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="help">Tip: 만료일을 날짜로 고정하면 “견적 유효기간” 분쟁이 줄어들어요.</div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              <span>② 공급자(제작사) 정보</span>
+              <span class="sum-badge">필수</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div>
+                  <label>상호(업체명)</label>
+                  <input id="inSupplierName" type="text" placeholder="예: (주)OO프로덕션" />
+                </div>
+                <div>
+                  <label>대표자명</label>
+                  <input id="inSupplierRep" type="text" placeholder="예: 홍길동" />
+                </div>
+                <div>
+                  <label>사업자등록번호</label>
+                  <input id="inSupplierBizNo" type="text" placeholder="예: 123-45-67890" />
+                </div>
+                <div>
+                  <label>업태/종목(선택)</label>
+                  <input id="inSupplierBizType" type="text" placeholder="예: 서비스/영상제작" />
+                </div>
+                <div class="full">
+                  <label>주소</label>
+                  <input id="inSupplierAddr" type="text" placeholder="예: 서울시 ..." />
+                </div>
+                <div>
+                  <label>연락처</label>
+                  <input id="inSupplierPhone" type="text" placeholder="예: 010-0000-0000" />
+                </div>
+                <div>
+                  <label>이메일</label>
+                  <input id="inSupplierEmail" type="text" placeholder="예: hello@company.com" />
+                </div>
+                <div>
+                  <label>웹사이트(선택)</label>
+                  <input id="inSupplierWeb" type="text" placeholder="예: www.company.com" />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              <span>③ 수신자(클라이언트) 정보</span>
+              <span class="sum-badge">권장</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div>
+                  <label>업체명</label>
+                  <input id="inClientCompany" type="text" placeholder="예: OO컴퍼니" />
+                </div>
+                <div>
+                  <label>담당자명/직함</label>
+                  <input id="inClientContact" type="text" placeholder="예: 박민우 대표" />
+                </div>
+                <div>
+                  <label>연락처(선택)</label>
+                  <input id="inClientPhone" type="text" placeholder="예: 010-0000-0000" />
+                </div>
+                <div>
+                  <label>이메일(선택)</label>
+                  <input id="inClientEmail" type="text" placeholder="예: 담당자 이메일" />
+                </div>
+                <div class="full">
+                  <label>주소(선택)</label>
+                  <input id="inClientAddr" type="text" placeholder="예: 세금계산서/납품 주소" />
+                </div>
+                <div>
+                  <label>사업자등록번호(선택)</label>
+                  <input id="inClientBizNo" type="text" placeholder="예: 123-45-67890" />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details open>
+            <summary>
+              <span>④ 상세 견적(항목)</span>
+              <span class="sum-badge">필수</span>
+            </summary>
+            <div class="sec">
+              <div class="warn">
+                <b>포인트:</b> 할인/교통비/숙박비도 “항목”으로 넣으면 문서가 깔끔해지고, 금액 산출이 자동으로 맞습니다.<br>
+                할인 항목은 <b>단가를 음수</b>로 입력하거나 “유형=할인”을 선택하세요.
+              </div>
+
+              <div style="margin-top:10px;" class="items">
+                <div class="head">
+                  <div>유형</div>
+                  <div>서비스명 / 세부내용</div>
+                  <div class="right">수량</div>
+                  <div class="right">단가(별도)</div>
+                  <div class="right"> </div>
+                </div>
+                <div id="itemsArea"></div>
+                <div class="items-actions">
+                  <span class="pill" id="pillAuto">자동 합산</span>
+                  <button type="button" class="btn" id="btnAddItem">+ 항목 추가</button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              <span>⑤ 산출물/스펙 & 범위</span>
+              <span class="sum-badge">필수</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div class="full">
+                  <label>납품물(Deliverables) — 줄바꿈으로 입력</label>
+                  <textarea id="inDeliverables" placeholder="- 숏폼 9:16 4건 (각 15~30초)
+- 테이블오더 홍보영상 1건 (20~30초)
+- 썸네일 5장"></textarea>
+                </div>
+                <div class="full">
+                  <label>파일/버전 규격(Format/Specs) — 줄바꿈으로 입력</label>
+                  <textarea id="inSpecs" placeholder="- 해상도: 1080x1920
+- 포맷: mp4(H.264)
+- 자막: 국문 포함
+- 납품: 구글드라이브 링크 제공"></textarea>
+                </div>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="grid">
+                <div class="full">
+                  <label>포함 범위(Inclusions) — 줄바꿈으로 입력</label>
+                  <textarea id="inInclusions" placeholder="- 기획/콘티 간단 구성
+- 촬영 1회(3시간) + 편집
+- 자막/기본 색보정
+- 초안 1회 + 무상 수정 1회"></textarea>
+                </div>
+                <div class="full">
+                  <label>제외 범위(Exclusions) — 줄바꿈으로 입력</label>
+                  <textarea id="inExclusions" placeholder="- 모델/배우 섭외비
+- 로케이션 대관료
+- 유료 음원/폰트/스톡 라이선스
+- 추가 촬영/추가 버전(가로 변환 등)"></textarea>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              <span>⑥ 일정/검수(마일스톤)</span>
+              <span class="sum-badge">권장</span>
+            </summary>
+            <div class="sec">
+              <div class="help">Tip: “초안일/수정마감/최종납품일”을 박아두면 검수 지연/범위변경 이슈가 줄어요.</div>
+              <div class="items" style="margin-top:10px;">
+                <div class="head" style="grid-template-columns: 1fr 120px 36px;">
+                  <div>마일스톤 / 비고</div>
+                  <div class="right">예정일</div>
+                  <div class="right"></div>
+                </div>
+                <div id="msArea"></div>
+                <div class="items-actions">
+                  <button type="button" class="btn" id="btnAddMs">+ 마일스톤 추가</button>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details open>
+            <summary>
+              <span>⑦ 결제·권리·수정·환불</span>
+              <span class="sum-badge">필수</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div class="full">
+                  <label>결제 조건(Payment Terms)</label>
+                  <textarea id="inPayment" placeholder="- 계약금 50% (계약 후 3영업일 이내)
+- 잔금 50% (최종 납품 후 7일 이내)
+- 세금계산서 발행: 가능(또는 불가)"></textarea>
+                </div>
+                <div class="full">
+                  <label>입금계좌(선택)</label>
+                  <input id="inBank" type="text" placeholder="예: 기업은행 000-0000-0000 (예금주: 홍길동)" />
+                </div>
+                <div class="full">
+                  <label>저작권/사용권 & 라이선스(Rights & Licenses)</label>
+                  <textarea id="inRights" placeholder="- 대금 완납 시 결과물 사용권(또는 저작권) 이전
+- 제3자 음원/폰트/스톡 라이선스 비용: (의뢰인/제작사) 부담
+- 광고 집행 가능 범위: 국내/전세계, 기간: 영구(또는 N개월)"></textarea>
+                </div>
+
+                <div class="full">
+                  <div class="switch">
+                    <input id="inPortfolioOn" type="checkbox" checked />
+                    <div>
+                      <div style="font-weight:1000; font-size:13px;">포트폴리오 사용(제작사 공개)</div>
+                      <div class="meta">허용 시 공개 조건을 아래에 입력하세요. 불가 시 체크 해제.</div>
+                    </div>
+                  </div>
+                  <label style="margin-top:10px;">포트폴리오 공개 조건(선택)</label>
+                  <input id="inPortfolioRule" type="text" placeholder="예: 런칭 후 30일 이후 / 사전 승인 후 공개" />
+                </div>
+
+                <div class="full">
+                  <label>수정(Revision) 기준</label>
+                  <textarea id="inRevision" placeholder="- 초안 1회 제공
+- 무상 수정 1회 (1회=수정사항 1세트 취합 전달)
+- 범위 변경(추가 촬영/전체 구성 변경 등)은 추가 견적"></textarea>
+                </div>
+
+                <div class="full">
+                  <label>환불/해지(Refund/Termination)</label>
+                  <textarea id="inRefund" placeholder="- 계약 후 착수 전: 전액 환불
+- 촬영/자료수집 완료 전: 총액의 30% 공제 후 환불
+- 촬영 완료/편집 진행 중: 진행률에 따라 협의
+- 최종 납품 후: 원칙적으로 환불 불가"></textarea>
+                </div>
+
+                <div class="full">
+                  <label>기타(비밀유지/자료제공/검수지연 등)</label>
+                  <textarea id="inOther" placeholder="- 의뢰인 제공자료 지연 시 납품일이 조정될 수 있습니다.
+- 프로젝트 관련 정보는 목적 외 사용하지 않습니다."></textarea>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <details>
+            <summary>
+              <span>⑧ 추가 문구(선택)</span>
+              <span class="sum-badge">선택</span>
+            </summary>
+            <div class="sec">
+              <div class="grid">
+                <div class="full">
+                  <label>상단 인사말/제출 문구</label>
+                  <textarea id="inGreeting" placeholder="귀사의 일익 번창하심을 기원하며 아래와 같이 견적서를 제출합니다."></textarea>
+                </div>
+                <div class="full">
+                  <label>하단 푸터 문구(선택)</label>
+                  <input id="inFooterNote" type="text" placeholder="예: 본 견적서는 제안용이며 최종 조건은 계약서에 따릅니다." />
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div class="help">※ 저장/불러오기는 브라우저 로컬 저장소를 사용합니다(외부 전송 없음).</div>
+        </div>
+      </aside>
+
+      <!-- PREVIEW -->
+      <main class="preview-wrap">
+        <div class="preview-shell">
+          <div class="paper" role="document" aria-label="견적서 미리보기">
+            <div class="pad">
+              <div class="doc-top">
+                <div>
+                  <h2 class="doc-title" id="outDocTitle">견적서 (Quotation)</h2>
+                  <div class="smallnote" id="outGreeting">귀사의 일익 번창하심을 기원하며 아래와 같이 견적서를 제출합니다.</div>
+                </div>
+                <div class="doc-meta">
+                  <div><span class="k">Quote No.</span> <span class="v" id="outQuoteNo">-</span></div>
+                  <div><span class="k">Date</span> <span class="v" id="outQuoteDate">-</span></div>
+                  <div><span class="k">Valid Until</span> <span class="v" id="outValidUntil">-</span></div>
+                  <div class="doc-mark">
+                    <span class="mark" id="outCurrency">KRW</span>
+                    <span class="mark" id="outVatMark">VAT 10%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="block-title">공급자 / 수신자</div>
+              <div class="two-col">
+                <div class="card">
+                  <div class="line"><b id="outSupplierName">(제작사명)</b></div>
+                  <div class="line muted" id="outSupplierLine1">대표: - · 사업자등록번호: -</div>
+                  <div class="line muted" id="outSupplierLine2">주소: -</div>
+                  <div class="line" id="outSupplierLine3">연락처: - · 이메일: -</div>
+                  <div class="line muted" id="outSupplierLine4" style="display:none;">웹사이트: -</div>
+                </div>
+                <div class="card">
+                  <div class="line"><b id="outClientTo">(클라이언트)</b> 귀하</div>
+                  <div class="line muted" id="outClientInfo">-</div>
+                </div>
+              </div>
+
+              <div class="block-title">프로젝트 개요</div>
+              <div class="card">
+                <div class="line"><b>프로젝트</b> <span id="outProjectName">-</span></div>
+                <div class="line"><b>서비스 기간</b> <span id="outServicePeriod">-</span></div>
+              </div>
+
+              <div class="block-title">상세 견적</div>
+              <div class="qtable">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:16%;">유형</th>
+                      <th style="width:30%;">서비스명</th>
+                      <th>세부 내용</th>
+                      <th class="right" style="width:10%;">수량</th>
+                      <th class="right" style="width:16%;">금액</th>
+                    </tr>
+                  </thead>
+                  <tbody id="outItemsBody">
+                    <tr><td colspan="5" class="muted" style="text-align:center; padding:14px 10px;">항목을 추가해주세요.</td></tr>
+                  </tbody>
+                  <tfoot>
+                    <tr class="sumrow">
+                      <td colspan="4" class="right">소계</td>
+                      <td class="right" id="outSubtotal">₩0</td>
+                    </tr>
+                    <tr class="sumrow" id="outVatRow">
+                      <td colspan="4" class="right">부가세(VAT)</td>
+                      <td class="right" id="outVat">₩0</td>
+                    </tr>
+                    <tr class="total">
+                      <td colspan="4" class="right" id="outTotalLabel">총 합계 금액</td>
+                      <td class="right" id="outTotal">₩0</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <div class="smallnote">* 할인/비용 포함 여부 및 범위는 아래 “산출물/범위/조건” 섹션을 따릅니다.</div>
+
+              <div class="block-title">산출물 및 스펙</div>
+              <div class="two-col">
+                <div class="terms">
+                  <h4>납품물(Deliverables)</h4>
+                  <ul class="list" id="outDeliverables"></ul>
+                  <div class="smallnote" id="outDeliverablesEmpty">-</div>
+                </div>
+                <div class="terms">
+                  <h4>파일/버전 규격(Format/Specs)</h4>
+                  <ul class="list" id="outSpecs"></ul>
+                  <div class="smallnote" id="outSpecsEmpty">-</div>
+                </div>
+              </div>
+
+              <div class="block-title">범위 정의</div>
+              <div class="two-col">
+                <div class="terms">
+                  <h4>포함 범위(Inclusions)</h4>
+                  <ul class="list" id="outInclusions"></ul>
+                  <div class="smallnote" id="outInclusionsEmpty">-</div>
+                </div>
+                <div class="terms">
+                  <h4>제외 범위(Exclusions)</h4>
+                  <ul class="list" id="outExclusions"></ul>
+                  <div class="smallnote" id="outExclusionsEmpty">-</div>
+                </div>
+              </div>
+
+              <div class="block-title">일정 및 검수</div>
+              <div class="qtable">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:40%;">마일스톤</th>
+                      <th style="width:20%;">예정일</th>
+                      <th>비고</th>
+                    </tr>
+                  </thead>
+                  <tbody id="outMsBody">
+                    <tr><td colspan="3" class="muted" style="text-align:center; padding:14px 10px;">마일스톤이 없으면 비워둘 수 있습니다.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="block-title">조건(결제·권리·수정·환불)</div>
+              <div class="terms">
+                <h4>결제(Payment)</h4>
+                <div class="t" id="outPayment">-</div>
+                <div class="smallnote" id="outBank"></div>
+              </div>
+
+              <div class="terms">
+                <h4>저작권/라이선스(Rights & Licenses)</h4>
+                <div class="t" id="outRights">-</div>
+                <div class="smallnote" id="outPortfolio">-</div>
+              </div>
+
+              <div class="two-col">
+                <div class="terms">
+                  <h4>수정(Revision)</h4>
+                  <div class="t" id="outRevision">-</div>
+                </div>
+                <div class="terms">
+                  <h4>환불/해지(Refund/Termination)</h4>
+                  <div class="t" id="outRefund">-</div>
+                </div>
+              </div>
+
+              <div class="terms">
+                <h4>기타</h4>
+                <div class="t" id="outOther">-</div>
+              </div>
+
+              <div class="block-title">확인 및 서명</div>
+              <div class="siggrid">
+                <div class="sigbox">
+                  <div class="who">공급자(제작사)</div>
+                  <div class="lines">
+                    업체명: <span id="outSigSupplierName">-</span><br>
+                    대표: <span id="outSigSupplierRep">-</span><br>
+                    날짜: <span id="outSigDate">-</span>
+                  </div>
+                  <div class="stamp">(직인)</div>
+                </div>
+                <div class="sigbox">
+                  <div class="who">의뢰인(클라이언트)</div>
+                  <div class="lines">
+                    업체명: <span id="outSigClientCompany">-</span><br>
+                    담당자: <span id="outSigClientContact">-</span><br>
+                    날짜: ____________
+                  </div>
+                  <div class="stamp">(서명)</div>
+                </div>
+              </div>
+
+              <div class="footer">
+                <div id="outFooterLeft">본 견적서는 제안용이며 최종 조건은 계약서/발주서에 따릅니다.</div>
+                <div class="muted" id="outFooterRight">Generated by Quotation Template</div>
+              </div>
+            </div>
+          </div>
+          <div class="smallnote no-print" style="text-align:center; margin-top:10px;">
+            인쇄 시 A4 1장 기준으로 최적화되어 있습니다. (브라우저 인쇄 설정에서 “머리글/바닥글” 해제 권장)
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+<script>
+  // ---------- Utilities ----------
+  const $ = (id) => document.getElementById(id);
+  const LS_KEY = "quotation_template_v2";
+
+  function todayISO(){
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  function plusDaysISO(days){
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  function formatKRDate(iso){
+    if(!iso) return "-";
+    const d = new Date(iso);
+    if(Number.isNaN(d.getTime())) return iso;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,"0");
+    const dd = String(d.getDate()).padStart(2,"0");
+    return `${yyyy}년 ${mm}월 ${dd}일`;
+  }
+  function currencySymbol(code){
+    return ({KRW:"₩", USD:"$", JPY:"¥", EUR:"€"})[code] || "";
+  }
+  function fmtMoney(n, code){
+    const sym = currencySymbol(code);
+    const val = Math.round(Number(n) || 0);
+    return sym + val.toLocaleString("ko-KR");
+  }
+  function cleanLines(text){
+    return (text || "")
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/^[-•\u2022]\s*/, ""));
+  }
+  function renderList(text, ulId, emptyId){
+    const ul = $(ulId);
+    const empty = $(emptyId);
+    ul.innerHTML = "";
+    const lines = cleanLines(text);
+    if(lines.length === 0){
+      empty.style.display = "";
+      return;
+    }
+    empty.style.display = "none";
+    for(const line of lines){
+      const li = document.createElement("li");
+      li.textContent = line;
+      ul.appendChild(li);
+    }
+  }
+
+  // ---------- State ----------
+  let items = [];
+  let milestones = [];
+
+  function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+
+  function seed(){
+    if(items.length === 0){
+      items.push({id:uid(), type:"서비스", name:"숏폼 영상 제작", desc:"9:16 / 15~30초 / 자막 포함", qty:4, unit:200000});
+    items.push({id:uid(), type:"비용", name:"교통비", desc:"왕복 교통비(예시)", qty:1, unit:200000});
+      items.push({id:uid(), type:"할인", name:"패키지 할인", desc:"", qty:1, unit:-200000});
+    }
+    if(milestones.length === 0){
+      milestones.push({id:uid(), name:"촬영(또는 자료수집)", date:"", note:"일정 협의"});
+      milestones.push({id:uid(), name:"편집 초안 전달", date:"", note:"의뢰인 검수 2영업일 포함"});
+      milestones.push({id:uid(), name:"최종 납품", date:"", note:"수정 반영 후"});
+    }
+  }
+
+  // ---------- Render Inputs ----------
+  function renderItemsInput(){
+    const area = $("itemsArea");
+    area.innerHTML = "";
+    for(const it of items){
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.innerHTML = `
+        <div>
+          <select data-k="type" data-id="${it.id}">
+            ${["서비스","비용","할인","기타"].map(v => `<option value="${v}" ${it.type===v?"selected":""}>${v}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <input data-k="name" data-id="${it.id}" type="text" placeholder="서비스명" value="${escapeHtml(it.name)}" />
+          <div style="height:6px"></div>
+          <textarea data-k="desc" data-id="${it.id}" placeholder="세부 내용(줄바꿈 가능)">${escapeHtml(it.desc || "")}</textarea>
+        </div>
+        <div>
+          <input data-k="qty" data-id="${it.id}" type="number" step="1" min="0" value="${Number(it.qty||0)}" style="text-align:right;" />
+        </div>
+        <div>
+          <input data-k="unit" data-id="${it.id}" type="number" step="1000" value="${Number(it.unit||0)}" style="text-align:right;" />
+        </div>
+        <div style="display:flex; justify-content:flex-end;">
+          <button class="iconbtn" title="삭제" data-del-item="${it.id}">×</button>
+        </div>
+      `;
+      area.appendChild(row);
+    }
+  }
+
+  function renderMsInput(){
+    const area = $("msArea");
+    area.innerHTML = "";
+    for(const ms of milestones){
+      const row = document.createElement("div");
+      row.className = "item-row";
+      row.style.gridTemplateColumns = "1fr 120px 36px";
+      row.innerHTML = `
+        <div>
+          <input data-msk="name" data-id="${ms.id}" type="text" placeholder="마일스톤" value="${escapeHtml(ms.name)}" />
+          <div style="height:6px"></div>
+          <input data-msk="note" data-id="${ms.id}" type="text" placeholder="비고" value="${escapeHtml(ms.note||"")}" />
+        </div>
+        <div>
+          <input data-msk="date" data-id="${ms.id}" type="date" value="${escapeHtml(ms.date||"")}" />
+        </div>
+        <div style="display:flex; justify-content:flex-end;">
+          <button class="iconbtn" title="삭제" data-del-ms="${ms.id}">×</button>
+        </div>
+      `;
+      area.appendChild(row);
+    }
+  }
+
+  function escapeHtml(str){
+    return String(str ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#39;");
+  }
+
+  // ---------- Preview Update ----------
+  function updatePreview(){
+    const currency = $("inCurrency").value;
+    const vatOn = $("inVatOn").checked;
+    const vatRate = Number($("inVatRate").value || 0) / 100;
+
+    $("outDocTitle").textContent = $("inDocTitle").value.trim() || "견적서 (Quotation)";
+    $("outQuoteNo").textContent = $("inQuoteNo").value.trim() || "-";
+    $("outQuoteDate").textContent = formatKRDate($("inQuoteDate").value);
+    $("outValidUntil").textContent = formatKRDate($("inValidUntil").value);
+
+    $("outCurrency").textContent = currency;
+    $("outVatMark").style.display = vatOn ? "" : "none";
+    $("outVatMark").textContent = `VAT ${Math.round(vatRate*1000)/10}%`;
+
+    // Greeting / Footer
+    const greeting = $("inGreeting").value.trim() || "귀사의 일익 번창하심을 기원하며 아래와 같이 견적서를 제출합니다.";
+    $("outGreeting").textContent = greeting;
+    $("outFooterLeft").textContent = $("inFooterNote").value.trim() || "본 견적서는 제안용이며 최종 조건은 계약서/발주서에 따릅니다.";
+
+    // Supplier
+    const sName = $("inSupplierName").value.trim() || "(제작사명)";
+    const sRep = $("inSupplierRep").value.trim() || "-";
+    const sBizNo = $("inSupplierBizNo").value.trim() || "-";
+    const sBizType = $("inSupplierBizType").value.trim();
+    const sAddr = $("inSupplierAddr").value.trim() || "-";
+    const sPhone = $("inSupplierPhone").value.trim() || "-";
+    const sEmail = $("inSupplierEmail").value.trim() || "-";
+    const sWeb = $("inSupplierWeb").value.trim();
+
+    $("outSupplierName").textContent = sName;
+    $("outSupplierLine1").textContent = `대표: ${sRep} · 사업자등록번호: ${sBizNo}${sBizType ? " · 업태/종목: " + sBizType : ""}`;
+    $("outSupplierLine2").textContent = `주소: ${sAddr}`;
+    $("outSupplierLine3").textContent = `연락처: ${sPhone} · 이메일: ${sEmail}`;
+    $("outSupplierLine4").style.display = sWeb ? "" : "none";
+    $("outSupplierLine4").textContent = `웹사이트: ${sWeb}`;
+
+    // Client
+    const cCo = $("inClientCompany").value.trim() || "(클라이언트)";
+    const cCt = $("inClientContact").value.trim() || "";
+    const cPhone = $("inClientPhone").value.trim() || "-";
+    const cEmail = $("inClientEmail").value.trim() || "-";
+    const cAddr = $("inClientAddr").value.trim() || "-";
+    const cBizNo = $("inClientBizNo").value.trim() || "-";
+
+    $("outClientTo").textContent = (cCo + (cCt ? " " + cCt : "")).trim();
+    $("outClientInfo").innerHTML =
+      `담당자: ${escapeHtml(cCt || "-")}<br>` +
+      `연락처/이메일: ${escapeHtml(cPhone)} / ${escapeHtml(cEmail)}<br>` +
+      `주소: ${escapeHtml(cAddr)}<br>` +
+      `사업자등록번호: ${escapeHtml(cBizNo)}`;
+
+    // Project
+    $("outProjectName").textContent = $("inProjectName").value.trim() || "-";
+    $("outServicePeriod").textContent = $("inServicePeriod").value.trim() || "-";
+
+    // Items
+    const body = $("outItemsBody");
+    body.innerHTML = "";
+    if(items.length === 0){
+      body.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center; padding:14px 10px;">항목을 추가해주세요.</td></tr>`;
+    } else {
+      for(const it of items){
+        const qty = Number(it.qty||0);
+        const unit = Number(it.unit||0);
+        const amt = qty * unit;
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(it.type || "-")}</td>
+          <td>${escapeHtml(it.name || "-")}</td>
+          <td class="desc">${escapeHtml(it.desc || "-")}</td>
+          <td class="right">${qty.toLocaleString("ko-KR")}</td>
+          <td class="right">${fmtMoney(amt, currency)}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    // Totals
+    const subtotal = items.reduce((s, it) => s + (Number(it.qty||0) * Number(it.unit||0)), 0);
+    const vat = vatOn ? Math.round(subtotal * vatRate) : 0;
+    const total = subtotal + vat;
+
+    $("outSubtotal").textContent = fmtMoney(subtotal, currency);
+    $("outVatRow").style.display = vatOn ? "" : "none";
+    $("outVat").textContent = fmtMoney(vat, currency);
+    $("outTotalLabel").textContent = vatOn ? "총 합계 금액 (VAT 포함)" : "총 합계 금액 (VAT 미포함)";
+    $("outTotal").textContent = fmtMoney(total, currency);
+
+    // Lists
+    renderList($("inDeliverables").value, "outDeliverables", "outDeliverablesEmpty");
+    renderList($("inSpecs").value, "outSpecs", "outSpecsEmpty");
+    renderList($("inInclusions").value, "outInclusions", "outInclusionsEmpty");
+    renderList($("inExclusions").value, "outExclusions", "outExclusionsEmpty");
+
+    // Milestones
+    const msBody = $("outMsBody");
+    msBody.innerHTML = "";
+    if(milestones.length === 0){
+      msBody.innerHTML = `<tr><td colspan="3" class="muted" style="text-align:center; padding:14px 10px;">마일스톤이 없으면 비워둘 수 있습니다.</td></tr>`;
+    } else {
+      for(const ms of milestones){
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(ms.name || "-")}</td>
+          <td>${escapeHtml(ms.date ? formatKRDate(ms.date) : "-")}</td>
+          <td>${escapeHtml(ms.note || "-")}</td>
+        `;
+        msBody.appendChild(tr);
+      }
+    }
+
+    // Terms
+    $("outPayment").textContent = $("inPayment").value.trim() || "-";
+    const bank = $("inBank").value.trim();
+    $("outBank").textContent = bank ? `입금계좌: ${bank}` : "";
+    $("outRights").textContent = $("inRights").value.trim() || "-";
+    $("outRevision").textContent = $("inRevision").value.trim() || "-";
+    $("outRefund").textContent = $("inRefund").value.trim() || "-";
+    $("outOther").textContent = $("inOther").value.trim() || "-";
+
+    const portOn = $("inPortfolioOn").checked;
+    const prule = $("inPortfolioRule").value.trim();
+    $("outPortfolio").textContent = portOn
+      ? `포트폴리오 공개: 가능${prule ? " · 조건: " + prule : ""}`
+      : "포트폴리오 공개: 불가(비공개)";
+
+    // Signatures
+    $("outSigSupplierName").textContent = sName;
+    $("outSigSupplierRep").textContent = sRep;
+    $("outSigClientCompany").textContent = cCo || "-";
+    $("outSigClientContact").textContent = cCt || "-";
+    $("outSigDate").textContent = formatKRDate($("inQuoteDate").value);
+  }
+
+  // ---------- Events ----------
+  function wire(){
+    // Add item
+    $("btnAddItem").addEventListener("click", () => {
+      items.push({id:uid(), type:"서비스", name:"", desc:"", qty:1, unit:0});
+      renderItemsInput();
+      updatePreview();
+      persistAuto();
+    });
+
+    // Add milestone
+    $("btnAddMs").addEventListener("click", () => {
+      milestones.push({id:uid(), name:"", date:"", note:""});
+      renderMsInput();
+      updatePreview();
+      persistAuto();
+    });
+
+    // Delegation for item edits / deletes
+    $("itemsArea").addEventListener("input", (e) => {
+      const el = e.target;
+      const id = el?.dataset?.id;
+      const k = el?.dataset?.k;
+      if(!id || !k) return;
+      const it = items.find(x => x.id === id);
+      if(!it) return;
+      if(k === "qty" || k === "unit") it[k] = Number(el.value || 0);
+      else it[k] = el.value;
+      updatePreview();
+      persistAuto();
+    });
+    $("itemsArea").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-del-item]");
+      if(!btn) return;
+      const id = btn.getAttribute("data-del-item");
+      items = items.filter(x => x.id !== id);
+      renderItemsInput();
+      updatePreview();
+      persistAuto();
+    });
+
+    // Delegation for milestone edits / deletes
+    $("msArea").addEventListener("input", (e) => {
+      const el = e.target;
+      const id = el?.dataset?.id;
+      const k = el?.dataset?.msk;
+      if(!id || !k) return;
+      const ms = milestones.find(x => x.id === id);
+      if(!ms) return;
+      ms[k] = el.value;
+      updatePreview();
+      persistAuto();
+    });
+    $("msArea").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-del-ms]");
+      if(!btn) return;
+      const id = btn.getAttribute("data-del-ms");
+      milestones = milestones.filter(x => x.id !== id);
+      renderMsInput();
+      updatePreview();
+      persistAuto();
+    });
+
+    // Main input updates
+    document.querySelectorAll("input, textarea, select").forEach(el => {
+      if(el.id === "fileImport") return;
+      el.addEventListener("input", () => { updatePreview(); persistAuto(); });
+      el.addEventListener("change", () => { updatePreview(); persistAuto(); });
+    });
+
+    // Buttons
+    $("btnUpdate").addEventListener("click", () => { updatePreview(); });
+    $("btnPrint").addEventListener("click", () => { updatePreview(); setTimeout(()=>window.print(), 80); });
+
+    $("btnSave").addEventListener("click", () => { saveToLocal(); toast("저장 완료"); });
+    $("btnLoad").addEventListener("click", () => { loadFromLocal(true); });
+
+    $("btnExport").addEventListener("click", () => {
+      const data = collectAll();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(data.fields.inQuoteNo || "quote")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    });
+
+    // Import JSON
+    const importLabel = document.querySelector('label[title="JSON 불러오기"]');
+    importLabel.addEventListener("click", () => $("fileImport").click());
+    $("fileImport").addEventListener("change", async (e) => {
+      const f = e.target.files?.[0];
+      if(!f) return;
+      const text = await f.text();
+      try{
+        const data = JSON.parse(text);
+        applyAll(data);
+        toast("JSON 불러오기 완료");
+      }catch(err){
+        alert("JSON 형식이 올바르지 않습니다.");
+      }finally{
+        e.target.value = "";
+      }
+    });
+
+    $("btnReset").addEventListener("click", () => {
+      if(!confirm("모든 입력을 초기화할까요? (저장된 로컬 데이터도 삭제됩니다)")) return;
+      localStorage.removeItem(LS_KEY);
+      location.reload();
+    });
+
+    // Hotkeys
+    window.addEventListener("keydown", (e) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      if(mod && e.key.toLowerCase() === "s"){
+        e.preventDefault();
+        saveToLocal();
+        toast("저장 완료");
+      }
+    });
+  }
+
+  // ---------- Save / Load ----------
+  function collectFields(){
+    const ids = [
+      "inDocTitle","inQuoteNo","inQuoteDate","inValidUntil","inProjectName","inServicePeriod",
+      "inVatOn","inVatRate","inCurrency",
+      "inSupplierName","inSupplierRep","inSupplierBizNo","inSupplierBizType","inSupplierAddr","inSupplierPhone","inSupplierEmail","inSupplierWeb",
+      "inClientCompany","inClientContact","inClientPhone","inClientEmail","inClientAddr","inClientBizNo",
+      "inDeliverables","inSpecs","inInclusions","inExclusions",
+      "inPayment","inBank","inRights","inPortfolioOn","inPortfolioRule","inRevision","inRefund","inOther",
+      "inGreeting","inFooterNote"
+    ];
+    const fields = {};
+    for(const id of ids){
+      const el = $(id);
+      if(!el) continue;
+      if(el.type === "checkbox") fields[id] = el.checked;
+      else fields[id] = el.value;
+    }
+    return fields;
+  }
+  function applyFields(fields){
+    for(const [id, val] of Object.entries(fields || {})){
+      const el = $(id);
+      if(!el) continue;
+      if(el.type === "checkbox") el.checked = !!val;
+      else el.value = val;
+    }
+  }
+  function collectAll(){
+    return { version: 2, fields: collectFields(), items, milestones };
+  }
+  function applyAll(data){
+    applyFields(data.fields || {});
+    items = Array.isArray(data.items) ? data.items : [];
+    milestones = Array.isArray(data.milestones) ? data.milestones : [];
+    renderItemsInput();
+    renderMsInput();
+    updatePreview();
+    saveToLocal(); // keep it
+  }
+  function saveToLocal(){
+    const data = collectAll();
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+  }
+  function loadFromLocal(showMsg){
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw){
+      if(showMsg) alert("저장된 데이터가 없습니다.");
+      return;
+    }
+    try{
+      applyAll(JSON.parse(raw));
+      if(showMsg) toast("불러오기 완료");
+    }catch{
+      if(showMsg) alert("저장 데이터가 손상되어 불러올 수 없습니다.");
+    }
+  }
+  function persistAuto(){
+    // lightweight autosave (no toast)
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(collectAll())); }catch(_){}}
+
+  // ---------- Toast ----------
+  let toastTimer = null;
+  function toast(msg){
+    let t = document.getElementById("toast");
+    if(!t){
+      t = document.createElement("div");
+      t.id = "toast";
+      t.style.position = "fixed";
+      t.style.right = "18px";
+      t.style.bottom = "18px";
+      t.style.zIndex = "9999";
+      t.style.background = "rgba(15,23,42,.92)";
+      t.style.color = "#fff";
+      t.style.padding = "10px 12px";
+      t.style.borderRadius = "14px";
+      t.style.fontSize = "12.5px";
+      t.style.fontWeight = "900";
+      t.style.boxShadow = "0 18px 44px rgba(0,0,0,.25)";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = "1";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>{ t.style.opacity = "0"; }, 1400);
+  }
+
+  // ---------- Init ----------
+  function initDefaults(){
+    $("inQuoteDate").value = todayISO();
+    $("inValidUntil").value = plusDaysISO(15);
+    $("inGreeting").value = $("inGreeting").value || "귀사의 일익 번창하심을 기원하며 아래와 같이 견적서를 제출합니다.";
+    $("inDocTitle").value = $("inDocTitle").value || "견적서 (Quotation)";
+  }
+
+  (function boot(){
+    initDefaults();
+    seed();
+    renderItemsInput();
+    renderMsInput();
+
+    // Load saved if exists
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      try{ applyAll(JSON.parse(raw)); }catch{ /* ignore */ }
+    } else {
+      updatePreview();
+    }
+
+    wire();
+  })();
+</script>
+</body>
+</html>
