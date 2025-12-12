@@ -187,11 +187,18 @@ export function GoogleCalendarSync({ onSyncComplete }: GoogleCalendarSyncProps) 
       }
     } catch (error) {
       console.error("Sync error:", error);
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "일정 동기화에 실패했습니다.";
+
       toast({
         title: "동기화 실패",
-        description: "일정 동기화에 실패했습니다.",
+        description: message,
         variant: "destructive",
       });
+
+      await fetchStatus();
     } finally {
       setSyncing(false);
       setSyncAction(null);
