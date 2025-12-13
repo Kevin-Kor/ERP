@@ -132,6 +132,7 @@ async function handleAddInfluencer(data: Record<string, unknown>) {
     const influencer = await prisma.influencer.create({
       data: {
         name: data.name as string,
+        phone: (data.phone as string) || "",
         instagramId: (data.instagramId as string) || null,
         youtubeChannel: (data.youtubeChannel as string) || null,
         categories: data.categories ? JSON.stringify(data.categories) : null,
