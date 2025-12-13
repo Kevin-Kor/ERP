@@ -1,9 +1,17 @@
 import OpenAI from "openai";
 import { EXPENSE_CATEGORIES, REVENUE_CATEGORIES } from "./utils";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization to avoid build-time errors
+let openaiClient: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openaiClient;
+}
 
 // 인텐트 타입 정의
 export type Intent =
@@ -104,7 +112,7 @@ query_dashboard:
 // 자연어 파싱 함수
 export async function parseNaturalLanguage(text: string): Promise<ParsedResult> {
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
