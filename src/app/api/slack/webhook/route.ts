@@ -256,12 +256,15 @@ export async function POST(request: NextRequest) {
       // 메시지 이벤트 처리
       if (event.type === "message" && event.text) {
         const userMessage = event.text;
+        console.log("[Slack Webhook] 메시지 수신:", userMessage);
 
         // AI 파싱
         const parsed = await parseNaturalLanguage(userMessage);
+        console.log("[Slack Webhook] AI 파싱 결과:", JSON.stringify(parsed, null, 2));
 
-        // 신뢰도 낮으면 안내 메시지
-        if (parsed.confidence < 0.5 || parsed.intent === "unknown") {
+        // 신뢰도 낮으면 안내 메시지 (threshold 0.3으로 낮춤)
+        if (parsed.confidence < 0.3 || parsed.intent === "unknown") {
+          console.log("[Slack Webhook] 신뢰도 낮음 또는 unknown:", parsed.confidence, parsed.intent);
           await sendSlackMessage(
             SLACK_CHANNEL_ID,
             "요청을 이해하지 못했습니다. 다음과 같이 입력해보세요:\n" +
