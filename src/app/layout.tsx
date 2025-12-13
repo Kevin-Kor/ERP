@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { Providers } from "@/providers";
 
@@ -35,6 +36,7 @@ export default function RootLayout({
     <html lang="ko" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <Providers>{children}</Providers>
+        <SpeedInsights />
       </body>
     </html>
   );
