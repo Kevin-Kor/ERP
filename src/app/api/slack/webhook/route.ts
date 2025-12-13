@@ -20,7 +20,7 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
 
   switch (intent) {
     case "add_transaction":
-      return await handleAddTransaction(data, userId);
+      return await handleAddTransaction(data);
     case "add_calendar":
       return await handleAddCalendar(data, userId);
     case "add_influencer":
@@ -38,7 +38,7 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
 }
 
 // 거래 추가
-async function handleAddTransaction(data: Record<string, unknown>, userId: string | null) {
+async function handleAddTransaction(data: Record<string, unknown>) {
   try {
     const transaction = await prisma.transaction.create({
       data: {
@@ -48,7 +48,6 @@ async function handleAddTransaction(data: Record<string, unknown>, userId: strin
         amount: Number(data.amount),
         memo: (data.memo as string) || null,
         paymentStatus: "COMPLETED",
-        userId: userId,
       },
     });
 
