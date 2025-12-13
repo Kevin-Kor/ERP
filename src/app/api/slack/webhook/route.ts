@@ -6,6 +6,20 @@ import { prisma } from "@/lib/prisma";
 const SLACK_CHANNEL_ID = process.env.SLACK_CHANNEL_ID!;
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
 
+// 중복 이벤트 방지를 위한 캐시 (최근 처리한 event_id 저장)
+const processedEvents = new Set<string>();
+const EVENT_CACHE_TTL = 60000; // 60초
+
+function isEventProcessed(eventId: string): boolean {
+  if (processedEvents.has(eventId)) {
+    return true;
+  }
+  processedEvents.add(eventId);
+  // 60초 후 캐시에서 제거
+  setTimeout(() => processedEvents.delete(eventId), EVENT_CACHE_TTL);
+  return false;
+}
+
 // 기본 사용자 ID 가져오기
 async function getDefaultUserId(): Promise<string | null> {
   const user = await prisma.user.findFirst({
@@ -238,6 +252,14 @@ export async function POST(request: NextRequest) {
     // 이벤트 처리
     if (body.type === "event_callback") {
       const event = body.event;
+      const eventId = body.event_id;
+
+      // 중복 이벤트 체크
+      if (isEventProcessed(eventId)) {
+        console.log("[Slack Webhook] 중복 이벤트 무시:", eventId);
+        return NextResponse.json({ ok: true });
+      }
+
       console.log("[Slack Webhook] Event:", event.type, "Channel:", event.channel, "Expected:", SLACK_CHANNEL_ID);
 
       // 봇 메시지 무시 (무한 루프 방지)
