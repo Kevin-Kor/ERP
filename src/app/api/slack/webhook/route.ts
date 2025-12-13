@@ -218,6 +218,8 @@ export async function POST(request: NextRequest) {
     const rawBody = await request.text();
     const body = JSON.parse(rawBody);
 
+    console.log("[Slack Webhook] Received:", JSON.stringify(body, null, 2));
+
     // URL 검증 (Slack 앱 설정 시)
     if (body.type === "url_verification") {
       return handleUrlVerification(body);
@@ -228,21 +230,26 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("x-slack-signature") || "";
 
     if (!verifySlackRequest(SLACK_SIGNING_SECRET, rawBody, timestamp, signature)) {
-      console.error("Slack 서명 검증 실패");
+      console.error("[Slack Webhook] 서명 검증 실패");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
+
+    console.log("[Slack Webhook] 서명 검증 통과");
 
     // 이벤트 처리
     if (body.type === "event_callback") {
       const event = body.event;
+      console.log("[Slack Webhook] Event:", event.type, "Channel:", event.channel, "Expected:", SLACK_CHANNEL_ID);
 
       // 봇 메시지 무시 (무한 루프 방지)
       if (event.bot_id || event.subtype === "bot_message") {
+        console.log("[Slack Webhook] 봇 메시지 무시");
         return NextResponse.json({ ok: true });
       }
 
       // 특정 채널만 처리
       if (event.channel !== SLACK_CHANNEL_ID) {
+        console.log("[Slack Webhook] 채널 불일치 - 무시:", event.channel, "!==", SLACK_CHANNEL_ID);
         return NextResponse.json({ ok: true });
       }
 
