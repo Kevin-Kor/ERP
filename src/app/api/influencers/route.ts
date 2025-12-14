@@ -61,10 +61,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const { projectAssignments = [], ...influencerData } = body;
 
     const influencer = await prisma.influencer.create({
-      data: body,
+      data: influencerData,
     });
+
+    if (Array.isArray(projectAssignments) && projectAssignments.length > 0) {
+      const normalizedAssignments = projectAssignments.map((assignment: any) => ({
+        projectId: assignment.projectId,
+        influencerId: influencer.id,
+        fee: Number(assignment.fee) || 0,
+        paymentStatus: (assignment.paymentStatus || "pending").toLowerCase(),
+      }));
+
+      await prisma.projectInfluencer.createMany({ data: normalizedAssignments, skipDuplicates: true });
+    }
 
     return NextResponse.json(influencer, { status: 201 });
   } catch (error) {
