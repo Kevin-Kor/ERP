@@ -21,6 +21,12 @@ export type Intent =
   | "add_client"
   | "add_project"
   | "query_dashboard"
+  | "query_client"
+  | "query_project"
+  | "query_settlement"
+  | "query_spending"
+  | "query_influencer"
+  | "generate_report"
   | "unknown";
 
 // 파싱 결과 타입
@@ -42,15 +48,21 @@ const revenueCategoryMap = REVENUE_CATEGORIES.reduce((acc, cat) => {
   return acc;
 }, {} as Record<string, string>);
 
-// AI 프롬프트
-const SYSTEM_PROMPT = `당신은 ERP 시스템의 자연어 파서입니다. 사용자가 어떤 형식으로 입력하든 의도를 파악하고 데이터를 추출해야 합니다.
+// AI 프롬프트 생성 함수 (동적 날짜 포함)
+function getSystemPrompt(): string {
+  const today = new Date().toISOString().split("T")[0];
+  const year = new Date().getFullYear();
+  const month = String(new Date().getMonth() + 1).padStart(2, "0");
+
+  return `당신은 ERP 시스템의 자연어 파서입니다. 사용자가 어떤 형식으로 입력하든 의도를 파악하고 데이터를 추출해야 합니다.
 
 **중요: 사용자는 정해진 포맷 없이 자유롭게 입력합니다. 유연하게 해석하세요.**
 
-오늘 날짜: ${new Date().toISOString().split("T")[0]}
+오늘 날짜: ${today}
 
 ## 지원하는 인텐트
 
+### 데이터 추가
 1. **add_transaction** - 지출/수입/비용/매출 등 금전 관련
    - 키워드: 지출, 비용, 결제, 구매, 샀다, 썼다, 매출, 수입, 입금, 받았다
 
@@ -63,8 +75,33 @@ const SYSTEM_PROMPT = `당신은 ERP 시스템의 자연어 파서입니다. 사
 4. **add_client** - 클라이언트/고객사 등록
    - 키워드: 클라이언트, 고객, 거래처, 업체
 
-5. **query_dashboard** - 현황/통계 조회
-   - 키워드: 현황, 얼마, 통계, 이번달, 지난달
+### 조회/검색
+5. **query_dashboard** - 전체 현황/통계 조회
+   - 키워드: 현황, 전체 현황, 얼마, 통계, 이번달, 지난달, 요약
+
+6. **query_client** - 특정 클라이언트 정보 조회
+   - 키워드: [회사명] 정보, [회사명] 현황, [회사명] 정산, [회사명] 어때
+   - data: { searchTerm: "회사명 또는 검색어" }
+
+7. **query_project** - 특정 프로젝트 정보 조회
+   - 키워드: [프로젝트명] 프로젝트, [프로젝트명] 진행상황, 캠페인 현황
+   - data: { searchTerm: "프로젝트명 또는 검색어", status: "IN_PROGRESS"|"COMPLETED"|"QUOTING" (선택) }
+
+8. **query_settlement** - 정산 현황 조회
+   - 키워드: 정산 현황, 정산 대기, 미정산, [인플루언서명] 정산
+   - data: { searchTerm: "인플루언서명 (선택)", status: "PENDING"|"COMPLETED" (선택) }
+
+9. **query_spending** - 지출 분석 조회
+   - 키워드: 지출 분석, 이번달 지출, 카테고리별 지출, 인플루언서 비용
+   - data: { period: "this_month"|"last_month"|"this_week", category: "카테고리명 (선택)" }
+
+10. **query_influencer** - 특정 인플루언서 정보 조회
+    - 키워드: [인플루언서명] 정보, [인플루언서명] 협업, 인플루언서 찾기
+    - data: { searchTerm: "인플루언서명 또는 검색어" }
+
+11. **generate_report** - 리포트 생성 요청
+    - 키워드: 리포트, 보고서, 주간 리포트, 월간 리포트
+    - data: { reportType: "weekly"|"monthly"|"daily" }
 
 ## 지출 카테고리 (자동 매칭)
 - 식비/음식/밥/커피/카페/식당 → "FOOD"
@@ -90,34 +127,74 @@ const SYSTEM_PROMPT = `당신은 ERP 시스템의 자연어 파서입니다. 사
 
 ## 예시 (다양한 입력 형태)
 
+### 거래 등록
 입력: "지출 : 15000원 커피 지출"
-출력: {"intent": "add_transaction", "confidence": 0.95, "data": {"type": "EXPENSE", "amount": 15000, "category": "FOOD", "memo": "커피", "date": "${new Date().toISOString().split("T")[0]}"}}
+출력: {"intent": "add_transaction", "confidence": 0.95, "data": {"type": "EXPENSE", "amount": 15000, "category": "FOOD", "memo": "커피", "date": "${today}"}}
 
 입력: "오늘 날짜로 지출작성해줘. 카페 15,000원"
-출력: {"intent": "add_transaction", "confidence": 0.95, "data": {"type": "EXPENSE", "amount": 15000, "category": "FOOD", "memo": "카페", "date": "${new Date().toISOString().split("T")[0]}"}}
-
-입력: "점심 먹었어 12000원"
-출력: {"intent": "add_transaction", "confidence": 0.9, "data": {"type": "EXPENSE", "amount": 12000, "category": "FOOD", "memo": "점심", "date": "${new Date().toISOString().split("T")[0]}"}}
+출력: {"intent": "add_transaction", "confidence": 0.95, "data": {"type": "EXPENSE", "amount": 15000, "category": "FOOD", "memo": "카페", "date": "${today}"}}
 
 입력: "택시비 35000"
-출력: {"intent": "add_transaction", "confidence": 0.9, "data": {"type": "EXPENSE", "amount": 35000, "category": "TRANSPORTATION", "memo": "택시", "date": "${new Date().toISOString().split("T")[0]}"}}
+출력: {"intent": "add_transaction", "confidence": 0.9, "data": {"type": "EXPENSE", "amount": 35000, "category": "TRANSPORTATION", "memo": "택시", "date": "${today}"}}
 
-입력: "A사에서 500만원 입금됨"
-출력: {"intent": "add_transaction", "confidence": 0.9, "data": {"type": "REVENUE", "amount": 5000000, "category": "OTHER_REVENUE", "memo": "A사 입금", "date": "${new Date().toISOString().split("T")[0]}"}}
-
+### 일정 등록
 입력: "15일에 B사 미팅있어"
-출력: {"intent": "add_calendar", "confidence": 0.9, "data": {"title": "B사 미팅", "date": "${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-15", "type": "MEETING"}}
+출력: {"intent": "add_calendar", "confidence": 0.9, "data": {"title": "B사 미팅", "date": "${year}-${month}-15", "type": "MEETING"}}
 
-입력: "다음주 월요일 광고주 회의"
-출력: {"intent": "add_calendar", "confidence": 0.85, "data": {"title": "광고주 회의", "date": "다음주 월요일 계산 필요", "type": "MEETING"}}
+### 조회 - 클라이언트
+입력: "ABC 회사 정산 얼마 남았어?"
+출력: {"intent": "query_client", "confidence": 0.9, "data": {"searchTerm": "ABC"}}
 
-입력: "인플루언서 김민수 등록해줘 인스타 @minsu_kim"
-출력: {"intent": "add_influencer", "confidence": 0.95, "data": {"name": "김민수", "instagramId": "minsu_kim"}}
+입력: "스타트업X 현황 알려줘"
+출력: {"intent": "query_client", "confidence": 0.9, "data": {"searchTerm": "스타트업X"}}
 
-입력: "이번달 지출 얼마야?"
-출력: {"intent": "query_dashboard", "confidence": 0.9, "data": {"period": "this_month"}}
+### 조회 - 프로젝트
+입력: "진행중인 프로젝트 뭐 있어?"
+출력: {"intent": "query_project", "confidence": 0.9, "data": {"status": "IN_PROGRESS"}}
 
-**핵심: 금액이 있으면 거래(add_transaction), 날짜+일정이면 캘린더(add_calendar), 사람 이름+등록이면 인플루언서/클라이언트입니다.**`;
+입력: "12월 캠페인 프로젝트 어떻게 돼?"
+출력: {"intent": "query_project", "confidence": 0.85, "data": {"searchTerm": "12월 캠페인"}}
+
+### 조회 - 정산
+입력: "정산 대기 목록 보여줘"
+출력: {"intent": "query_settlement", "confidence": 0.95, "data": {"status": "PENDING"}}
+
+입력: "김민수 정산 했어?"
+출력: {"intent": "query_settlement", "confidence": 0.9, "data": {"searchTerm": "김민수"}}
+
+입력: "이번달 미정산 얼마야?"
+출력: {"intent": "query_settlement", "confidence": 0.9, "data": {"status": "PENDING"}}
+
+### 조회 - 지출
+입력: "이번달 인플루언서 비용 총 얼마야?"
+출력: {"intent": "query_spending", "confidence": 0.95, "data": {"period": "this_month", "category": "INFLUENCER_FEE"}}
+
+입력: "지난달 지출 분석해줘"
+출력: {"intent": "query_spending", "confidence": 0.9, "data": {"period": "last_month"}}
+
+### 조회 - 인플루언서
+입력: "뷰티 인플루언서 누구 있어?"
+출력: {"intent": "query_influencer", "confidence": 0.85, "data": {"searchTerm": "뷰티"}}
+
+입력: "김민수 인플루언서 협업 이력"
+출력: {"intent": "query_influencer", "confidence": 0.9, "data": {"searchTerm": "김민수"}}
+
+### 리포트 생성
+입력: "주간 리포트 보내줘"
+출력: {"intent": "generate_report", "confidence": 0.95, "data": {"reportType": "weekly"}}
+
+입력: "이번달 리포트 만들어"
+출력: {"intent": "generate_report", "confidence": 0.9, "data": {"reportType": "monthly"}}
+
+**핵심 판단 기준:**
+- 금액+동작(썼다/입금) → add_transaction
+- 날짜+일정/미팅 → add_calendar
+- [이름/회사명]+정보/현황/정산 → query_* (조회)
+- 전체 현황/통계 → query_dashboard
+- 정산+대기/현황 → query_settlement
+- 지출+분석/카테고리 → query_spending
+- 리포트/보고서 → generate_report`;
+}
 
 // 자연어 파싱 함수
 export async function parseNaturalLanguage(text: string): Promise<ParsedResult> {
@@ -125,7 +202,7 @@ export async function parseNaturalLanguage(text: string): Promise<ParsedResult> 
     const response = await getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: getSystemPrompt() },
         { role: "user", content: text },
       ],
       response_format: { type: "json_object" },
