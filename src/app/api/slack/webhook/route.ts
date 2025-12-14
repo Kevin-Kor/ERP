@@ -43,10 +43,34 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
       return await handleAddClient(data);
     case "query_dashboard":
       return await handleQueryDashboard();
+    case "query_client":
+      return await handleQueryClient(data);
+    case "query_project":
+      return await handleQueryProject(data);
+    case "query_settlement":
+      return await handleQuerySettlement(data);
+    case "query_spending":
+      return await handleQuerySpending(data);
+    case "query_influencer":
+      return await handleQueryInfluencer(data);
+    case "generate_report":
+      return await handleGenerateReport(data);
     default:
       return {
         success: false,
-        message: "이해하지 못한 요청입니다. 다시 시도해주세요.\n\n지원 명령어:\n- 지출/수입 등록: \"15000원 커피 지출\"\n- 일정 추가: \"15일 미팅 일정\"\n- 인플루언서 추가: \"인플루언서 OOO 추가\"\n- 대시보드 조회: \"이번 달 현황\"",
+        message: "이해하지 못한 요청입니다. 다시 시도해주세요.\n\n지원 명령어:\n" +
+          "📝 *등록*\n" +
+          "- 지출/수입: \"15000원 커피 지출\"\n" +
+          "- 일정: \"15일 미팅 일정\"\n" +
+          "- 인플루언서: \"인플루언서 OOO 추가\"\n\n" +
+          "🔍 *조회*\n" +
+          "- 전체 현황: \"이번 달 현황\"\n" +
+          "- 클라이언트: \"ABC 회사 정산 현황\"\n" +
+          "- 프로젝트: \"진행중인 프로젝트\"\n" +
+          "- 정산: \"정산 대기 목록\"\n" +
+          "- 지출: \"이번달 지출 분석\"\n\n" +
+          "📊 *리포트*\n" +
+          "- \"주간 리포트 보내줘\"",
       };
   }
 }
@@ -218,6 +242,428 @@ async function handleQueryDashboard() {
   } catch (error) {
     console.error("대시보드 조회 오류:", error);
     return { success: false, message: "대시보드 조회에 실패했습니다." };
+  }
+}
+
+// 금액 포맷팅 헬퍼
+function formatAmount(amount: number): string {
+  if (amount >= 10000) {
+    return (amount / 10000).toFixed(1).replace(/\.0$/, "") + "만원";
+  }
+  return amount.toLocaleString("ko-KR") + "원";
+}
+
+// 클라이언트 조회
+async function handleQueryClient(data: Record<string, unknown>) {
+  try {
+    const searchTerm = data.searchTerm as string;
+
+    const clients = await prisma.client.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: "insensitive" } },
+          { contactName: { contains: searchTerm, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        Project: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            contractAmount: true,
+            ProjectInfluencer: {
+              select: {
+                fee: true,
+                paymentStatus: true,
+              },
+            },
+          },
+        },
+        Transaction: {
+          where: { type: "REVENUE" },
+          select: { amount: true, paymentStatus: true },
+        },
+      },
+      take: 5,
+    });
+
+    if (clients.length === 0) {
+      return {
+        success: true,
+        intent: "query_client",
+        data: { found: false, searchTerm },
+      };
+    }
+
+    const results = clients.map((client) => {
+      const totalRevenue = client.Transaction.reduce((sum, t) => sum + t.amount, 0);
+      const unpaidRevenue = client.Transaction
+        .filter((t) => t.paymentStatus !== "COMPLETED")
+        .reduce((sum, t) => sum + t.amount, 0);
+      const activeProjects = client.Project.filter((p) => p.status === "IN_PROGRESS").length;
+      const pendingSettlements = client.Project.flatMap((p) => p.ProjectInfluencer)
+        .filter((pi) => pi.paymentStatus === "PENDING" || pi.paymentStatus === "REQUESTED");
+      const pendingSettlementAmount = pendingSettlements.reduce((sum, pi) => sum + pi.fee, 0);
+
+      return {
+        name: client.name,
+        contactName: client.contactName,
+        status: client.status,
+        totalRevenue,
+        unpaidRevenue,
+        activeProjects,
+        pendingSettlementAmount,
+        pendingSettlementCount: pendingSettlements.length,
+      };
+    });
+
+    return {
+      success: true,
+      intent: "query_client",
+      data: { found: true, clients: results, searchTerm },
+    };
+  } catch (error) {
+    console.error("클라이언트 조회 오류:", error);
+    return { success: false, message: "클라이언트 조회에 실패했습니다." };
+  }
+}
+
+// 프로젝트 조회
+async function handleQueryProject(data: Record<string, unknown>) {
+  try {
+    const searchTerm = data.searchTerm as string | undefined;
+    const status = data.status as string | undefined;
+
+    const whereCondition: Record<string, unknown> = {};
+
+    if (searchTerm) {
+      whereCondition.OR = [
+        { name: { contains: searchTerm, mode: "insensitive" } },
+        { Client: { name: { contains: searchTerm, mode: "insensitive" } } },
+      ];
+    }
+
+    if (status) {
+      whereCondition.status = status;
+    }
+
+    const projects = await prisma.project.findMany({
+      where: whereCondition,
+      include: {
+        Client: { select: { name: true } },
+        ProjectInfluencer: {
+          include: { Influencer: { select: { name: true } } },
+        },
+      },
+      orderBy: { endDate: "asc" },
+      take: 10,
+    });
+
+    if (projects.length === 0) {
+      return {
+        success: true,
+        intent: "query_project",
+        data: { found: false, searchTerm, status },
+      };
+    }
+
+    const statusLabels: Record<string, string> = {
+      QUOTING: "견적 중",
+      IN_PROGRESS: "진행 중",
+      COMPLETED: "완료",
+      CANCELLED: "취소",
+    };
+
+    const results = projects.map((project) => ({
+      name: project.name,
+      clientName: project.Client.name,
+      status: statusLabels[project.status] || project.status,
+      contractAmount: project.contractAmount,
+      startDate: project.startDate.toLocaleDateString("ko-KR"),
+      endDate: project.endDate.toLocaleDateString("ko-KR"),
+      influencerCount: project.ProjectInfluencer.length,
+      influencers: project.ProjectInfluencer.map((pi) => pi.Influencer.name),
+    }));
+
+    return {
+      success: true,
+      intent: "query_project",
+      data: { found: true, projects: results, count: projects.length },
+    };
+  } catch (error) {
+    console.error("프로젝트 조회 오류:", error);
+    return { success: false, message: "프로젝트 조회에 실패했습니다." };
+  }
+}
+
+// 정산 현황 조회
+async function handleQuerySettlement(data: Record<string, unknown>) {
+  try {
+    const searchTerm = data.searchTerm as string | undefined;
+    const status = data.status as string | undefined;
+
+    const whereCondition: Record<string, unknown> = {};
+
+    if (searchTerm) {
+      whereCondition.Influencer = {
+        name: { contains: searchTerm, mode: "insensitive" },
+      };
+    }
+
+    if (status === "PENDING") {
+      whereCondition.paymentStatus = { in: ["PENDING", "REQUESTED"] };
+    } else if (status === "COMPLETED") {
+      whereCondition.paymentStatus = "COMPLETED";
+    }
+
+    const settlements = await prisma.projectInfluencer.findMany({
+      where: whereCondition,
+      include: {
+        Influencer: { select: { name: true } },
+        Project: {
+          select: {
+            name: true,
+            Client: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { paymentDueDate: "asc" },
+      take: 15,
+    });
+
+    const statusLabels: Record<string, string> = {
+      PENDING: "대기",
+      REQUESTED: "요청됨",
+      COMPLETED: "완료",
+    };
+
+    const totalPending = settlements
+      .filter((s) => s.paymentStatus === "PENDING" || s.paymentStatus === "REQUESTED")
+      .reduce((sum, s) => sum + s.fee, 0);
+
+    const results = settlements.map((s) => ({
+      influencerName: s.Influencer.name,
+      projectName: s.Project.name,
+      clientName: s.Project.Client.name,
+      fee: s.fee,
+      status: statusLabels[s.paymentStatus] || s.paymentStatus,
+      dueDate: s.paymentDueDate?.toLocaleDateString("ko-KR") || "미정",
+    }));
+
+    return {
+      success: true,
+      intent: "query_settlement",
+      data: {
+        found: settlements.length > 0,
+        settlements: results,
+        count: settlements.length,
+        totalPending,
+      },
+    };
+  } catch (error) {
+    console.error("정산 조회 오류:", error);
+    return { success: false, message: "정산 조회에 실패했습니다." };
+  }
+}
+
+// 지출 분석 조회
+async function handleQuerySpending(data: Record<string, unknown>) {
+  try {
+    const period = (data.period as string) || "this_month";
+    const category = data.category as string | undefined;
+
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel: string;
+
+    switch (period) {
+      case "last_month":
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+        periodLabel = "지난달";
+        break;
+      case "this_week":
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+        startDate = new Date(now.setDate(diff));
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+        periodLabel = "이번주";
+        break;
+      default: // this_month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        periodLabel = "이번달";
+    }
+
+    const whereCondition: Record<string, unknown> = {
+      type: "EXPENSE",
+      date: { gte: startDate, lte: endDate },
+    };
+
+    if (category) {
+      whereCondition.category = category;
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where: whereCondition,
+    });
+
+    const totalExpense = transactions.reduce((sum, t) => sum + t.amount, 0);
+
+    // 카테고리별 집계
+    const byCategory = transactions.reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const categoryLabels: Record<string, string> = {
+      FOOD: "식비",
+      TRANSPORTATION: "교통비",
+      SUPPLIES: "사무용품",
+      AD_EXPENSE: "광고비",
+      INFLUENCER_FEE: "인플루언서",
+      CONTENT_PRODUCTION: "콘텐츠 제작",
+      OPERATIONS: "운영비",
+      SALARY: "급여",
+      OFFICE_RENT: "임대료",
+      OTHER_EXPENSE: "기타",
+    };
+
+    const categoryBreakdown = Object.entries(byCategory)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .map(([cat, amount]: [string, number]) => ({
+        category: categoryLabels[cat] || cat,
+        amount,
+        percent: totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : "0",
+      }));
+
+    return {
+      success: true,
+      intent: "query_spending",
+      data: {
+        period: periodLabel,
+        totalExpense,
+        transactionCount: transactions.length,
+        categoryBreakdown,
+      },
+    };
+  } catch (error) {
+    console.error("지출 분석 오류:", error);
+    return { success: false, message: "지출 분석에 실패했습니다." };
+  }
+}
+
+// 인플루언서 조회
+async function handleQueryInfluencer(data: Record<string, unknown>) {
+  try {
+    const searchTerm = data.searchTerm as string;
+
+    const influencers = await prisma.influencer.findMany({
+      where: {
+        OR: [
+          { name: { contains: searchTerm, mode: "insensitive" } },
+          { instagramId: { contains: searchTerm, mode: "insensitive" } },
+          { categories: { contains: searchTerm, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        ProjectInfluencer: {
+          include: {
+            Project: {
+              select: {
+                name: true,
+                status: true,
+                Client: { select: { name: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        },
+      },
+      take: 5,
+    });
+
+    if (influencers.length === 0) {
+      return {
+        success: true,
+        intent: "query_influencer",
+        data: { found: false, searchTerm },
+      };
+    }
+
+    const results = influencers.map((inf) => {
+      const totalProjects = inf.ProjectInfluencer.length;
+      const totalEarnings = inf.ProjectInfluencer.reduce((sum, pi) => sum + pi.fee, 0);
+      const recentProjects = inf.ProjectInfluencer.slice(0, 3).map((pi) => ({
+        projectName: pi.Project.name,
+        clientName: pi.Project.Client.name,
+        fee: pi.fee,
+        status: pi.paymentStatus,
+      }));
+
+      return {
+        name: inf.name,
+        instagramId: inf.instagramId || "-",
+        youtubeChannel: inf.youtubeChannel || "-",
+        categories: inf.categories || "-",
+        followerCount: inf.followerCount,
+        priceRange: inf.priceRange || "-",
+        totalProjects,
+        totalEarnings,
+        recentProjects,
+      };
+    });
+
+    return {
+      success: true,
+      intent: "query_influencer",
+      data: { found: true, influencers: results, searchTerm },
+    };
+  } catch (error) {
+    console.error("인플루언서 조회 오류:", error);
+    return { success: false, message: "인플루언서 조회에 실패했습니다." };
+  }
+}
+
+// 리포트 생성
+async function handleGenerateReport(data: Record<string, unknown>) {
+  try {
+    const reportType = (data.reportType as string) || "weekly";
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || "http://localhost:3000";
+
+    // 내부 API 호출로 리포트 생성
+    const endpoint = reportType === "monthly"
+      ? `${baseUrl}/api/cron/monthly-report`
+      : `${baseUrl}/api/cron/weekly-report`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.CRON_SECRET || "dev"}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`리포트 생성 실패: ${response.status}`);
+    }
+
+    return {
+      success: true,
+      intent: "generate_report",
+      data: {
+        reportType,
+        generated: true,
+      },
+    };
+  } catch (error) {
+    console.error("리포트 생성 오류:", error);
+    return { success: false, message: "리포트 생성에 실패했습니다." };
   }
 }
 

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Globe, Instagram, Loader2, PlusCircle, Trash2, Youtube } from "lucide-react";
-
 import { INFLUENCER_CATEGORIES } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +67,8 @@ const normalizeStatus = (status?: string): SettlementStatus => {
   if (value === "in_progress" || value === "requested") return "in_progress";
   return "pending";
 };
+
+}
 
 export default function EditInfluencerPage() {
   const router = useRouter();
