@@ -143,12 +143,14 @@ export default function EditInfluencerPage() {
         }
 
         const data = await res.json();
-        setProjectOptions(
-          (data.projects || []).map((project: any) => ({
+        const options = (data.projects || [])
+          .map((project: any) => ({
             id: project.id,
             name: project.name,
           }))
-        );
+          .sort((a: ProjectOption, b: ProjectOption) => a.name.localeCompare(b.name));
+
+        setProjectOptions(options);
       } catch (error) {
         console.error("Failed to load projects", error);
         setProjectOptions([]);
