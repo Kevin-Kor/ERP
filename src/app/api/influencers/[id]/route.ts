@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const normalizeStatus = (status?: string) => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,6 +42,7 @@ export async function GET(
       ...influencer,
       projectInfluencers: influencer.ProjectInfluencer.map(pi => ({
         ...pi,
+        paymentStatus: normalizeStatus(pi.paymentStatus),
         project: {
           ...pi.Project,
           client: pi.Project.Client,
@@ -59,11 +67,53 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
+    const { projectAssignments, ...influencerData } = body;
 
     const influencer = await prisma.influencer.update({
       where: { id },
-      data: body,
+      data: influencerData,
     });
+
+    if (Array.isArray(projectAssignments)) {
+      const assignments = projectAssignments.map((assignment: any) => ({
+        projectId: assignment.projectId,
+        fee: Number(assignment.fee) || 0,
+        paymentStatus: normalizeStatus(assignment.paymentStatus),
+        paymentDueDate: assignment.paymentDueDate ? new Date(assignment.paymentDueDate) : null,
+      }));
+
+      const projectIds = assignments.map((assignment) => assignment.projectId);
+
+      const deletionWhere =
+        projectIds.length > 0
+          ? { influencerId: id, projectId: { notIn: projectIds } }
+          : { influencerId: id };
+
+      await prisma.$transaction([
+        prisma.projectInfluencer.deleteMany({
+          where: deletionWhere,
+        }),
+        ...assignments.map((assignment) =>
+          prisma.projectInfluencer.upsert({
+            where: {
+              projectId_influencerId: {
+                projectId: assignment.projectId,
+                influencerId: id,
+              },
+            },
+            update: {
+              fee: assignment.fee,
+              paymentStatus: assignment.paymentStatus,
+              paymentDueDate: assignment.paymentDueDate,
+            },
+            create: {
+              ...assignment,
+              influencerId: id,
+            },
+          })
+        ),
+      ]);
+    }
 
     return NextResponse.json(influencer);
   } catch (error) {
