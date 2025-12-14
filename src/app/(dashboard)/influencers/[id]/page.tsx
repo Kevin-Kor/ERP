@@ -470,7 +470,7 @@ export default function InfluencerDetailPage() {
                           </Link>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {pi.project.client.name}
+                          {pi.project.client?.name || "클라이언트 미지정"}
                         </TableCell>
                       <TableCell className="font-medium">
                         {formatCurrency(pi.fee)}

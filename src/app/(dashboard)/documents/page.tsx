@@ -278,7 +278,7 @@ export default function DocumentsPage() {
                   <TableRow key={doc.id} className="group">
                     <TableCell className="font-medium">{doc.docNumber}</TableCell>
                     <TableCell>{getTypeBadge(doc.type)}</TableCell>
-                    <TableCell>{doc.client.name}</TableCell>
+                    <TableCell>{doc.client?.name || "클라이언트 미지정"}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {doc.project?.name || "-"}
                     </TableCell>
