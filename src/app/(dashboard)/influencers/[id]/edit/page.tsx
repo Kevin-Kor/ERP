@@ -68,7 +68,7 @@ interface InfluencerResponse {
   }>;
 }
 
-const normalizeStatus = (status?: string): SettlementStatus => {
+const normalizeStatus = (status?: string | null): SettlementStatus => {
   const value = (status || "").toLowerCase();
   if (value === "completed") return "completed";
   if (value === "in_progress" || value === "requested") return "in_progress";
@@ -147,7 +147,7 @@ export default function EditInfluencerPage() {
         }
 
         const data = await res.json();
-        const options = (data.projects || [])
+        const options = (Array.isArray(data.projects) ? data.projects : [])
           .map((project: any) => ({
             id: project.id,
             name: project.name,
