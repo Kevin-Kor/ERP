@@ -263,7 +263,7 @@ export default function NewDocumentPage() {
                   <SelectContent>
                     {clients.map((client) => (
                       <SelectItem key={client.id} value={client.id}>
-                        {client.name}
+                        {client?.name || "클라이언트 미지정"}
                         {client.businessNo && (
                           <span className="text-muted-foreground ml-2">
                             ({client.businessNo})

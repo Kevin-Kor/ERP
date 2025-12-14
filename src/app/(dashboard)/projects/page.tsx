@@ -188,7 +188,7 @@ export default function ProjectsPage() {
                     </div>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Building2 className="h-3 w-3" />
-                      {project.client.name}
+                      {project.client?.name || "클라이언트 미지정"}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">

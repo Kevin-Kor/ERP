@@ -8,21 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,7 +61,7 @@ interface Influencer {
       id: string;
       name: string;
       status: string;
-      client: { name: string };
+      client: { name: string } | null;
     };
   }>;
 }
@@ -106,9 +93,7 @@ export default function InfluencerDetailPage() {
     try {
       setLoading(true);
       const res = await fetch(`/api/influencers/${params.id}`);
-      if (!res.ok) {
-        throw new Error("Not found");
-      }
+      if (!res.ok) throw new Error("Not found");
       const data = await res.json();
       setInfluencer(data);
     } catch (error) {
@@ -125,9 +110,7 @@ export default function InfluencerDetailPage() {
   async function handleDelete() {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/influencers/${params.id}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/influencers/${params.id}`, { method: "DELETE" });
       if (res.ok) {
         router.push("/influencers");
         router.refresh();
@@ -142,10 +125,7 @@ export default function InfluencerDetailPage() {
     }
   }
 
-  const handleSettlementStatusChange = async (
-    settlementId: string,
-    newStatus: SettlementStatus
-  ) => {
+  const handleSettlementStatusChange = async (settlementId: string, newStatus: SettlementStatus) => {
     setUpdatingSettlementId(settlementId);
     try {
       await fetch(`/api/settlements/${settlementId}`, {
@@ -295,9 +275,7 @@ export default function InfluencerDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600">
-              {formatCurrency(totalEarnings)}
-            </div>
+            <div className="text-2xl font-bold text-emerald-600">{formatCurrency(totalEarnings)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -308,9 +286,7 @@ export default function InfluencerDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">
-              {formatCurrency(pendingPayments)}
-            </div>
+            <div className="text-2xl font-bold text-amber-600">{formatCurrency(pendingPayments)}</div>
           </CardContent>
         </Card>
         <Card>
@@ -396,12 +372,7 @@ export default function InfluencerDetailPage() {
               {influencer.blog && (
                 <div className="flex items-center gap-3">
                   <Globe className="h-5 w-5 text-green-500" />
-                  <a
-                    href={influencer.blog}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline"
-                  >
+                  <a href={influencer.blog} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
                     {influencer.blog}
                   </a>
                 </div>
@@ -444,9 +415,7 @@ export default function InfluencerDetailPage() {
             </CardHeader>
             <CardContent>
               {influencer.projectInfluencers.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  협업 이력이 없습니다.
-                </p>
+                <p className="text-center text-muted-foreground py-8">협업 이력이 없습니다.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -462,38 +431,31 @@ export default function InfluencerDetailPage() {
                     {influencer.projectInfluencers.map((pi) => (
                       <TableRow key={pi.id}>
                         <TableCell>
-                          <Link
-                            href={`/projects/${pi.project.id}`}
-                            className="font-medium hover:text-primary"
-                          >
+                          <Link href={`/projects/${pi.project.id}`} className="font-medium hover:text-primary">
                             {pi.project.name}
                           </Link>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {pi.project.client.name}
+                          {pi.project.client?.name || "클라이언트 미지정"}
                         </TableCell>
-                      <TableCell className="font-medium">
-                        {formatCurrency(pi.fee)}
-                      </TableCell>
-                      <TableCell className="w-[180px]">
-                        <Select
-                          value={normalizeStatus(pi.paymentStatus)}
-                          onValueChange={(value) =>
-                            handleSettlementStatusChange(pi.id, value as SettlementStatus)
-                          }
-                        >
-                          <SelectTrigger disabled={updatingSettlementId === pi.id}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {statusOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
+                        <TableCell className="font-medium">{formatCurrency(pi.fee)}</TableCell>
+                        <TableCell className="w-[180px]">
+                          <Select
+                            value={normalizeStatus(pi.paymentStatus)}
+                            onValueChange={(value) => handleSettlementStatusChange(pi.id, value as SettlementStatus)}
+                          >
+                            <SelectTrigger disabled={updatingSettlementId === pi.id}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {statusOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {pi.paymentDate
                             ? formatDate(pi.paymentDate)
@@ -513,4 +475,3 @@ export default function InfluencerDetailPage() {
     </div>
   );
 }
-

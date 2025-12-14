@@ -45,6 +45,7 @@ import {
   MoreHorizontal,
   Trash2,
   Loader2,
+  Instagram,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -375,7 +376,9 @@ export default function SettlementsPage() {
                               <Link href={`/projects/${item.project.id}`} className="font-medium hover:text-primary">
                                 {item.project.name}
                               </Link>
-                              <span className="text-xs text-muted-foreground">{item.project.client.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {item.project.client?.name || "클라이언트 미지정"}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell className="text-right font-medium">
@@ -453,7 +456,7 @@ export default function SettlementsPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {settlement.project.client.name}
+                      {settlement.project.client?.name || "클라이언트 미지정"}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(settlement.fee)}

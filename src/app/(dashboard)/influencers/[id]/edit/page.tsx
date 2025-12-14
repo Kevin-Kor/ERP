@@ -155,11 +155,7 @@ export default function EditInfluencerPage() {
     }
   };
 
-  const updateAssignment = (
-    index: number,
-    field: "projectId" | "fee" | "paymentStatus",
-    value: string
-  ) => {
+  const updateAssignment = (index: number, field: "projectId" | "fee" | "paymentStatus", value: string) => {
     setProjectAssignments((prev) =>
       prev.map((assignment, i) => (i === index ? { ...assignment, [field]: value } : assignment))
     );
@@ -372,9 +368,7 @@ export default function EditInfluencerPage() {
                     <label key={category.value} className="flex items-center space-x-2 text-sm">
                       <Checkbox
                         checked={selectedCategories.includes(category.value)}
-                        onCheckedChange={(checked) =>
-                          handleCategoryChange(category.value, checked === true)
-                        }
+                        onCheckedChange={(checked) => handleCategoryChange(category.value, checked === true)}
                       />
                       <span>{category.label}</span>
                     </label>
@@ -384,8 +378,7 @@ export default function EditInfluencerPage() {
                 {selectedCategories.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {selectedCategories.map((category) => {
-                      const label =
-                        INFLUENCER_CATEGORIES.find((c) => c.value === category)?.label || category;
+                      const label = INFLUENCER_CATEGORIES.find((c) => c.value === category)?.label || category;
                       return (
                         <Badge key={category} variant="secondary">
                           {label}
@@ -403,9 +396,7 @@ export default function EditInfluencerPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardTitle>프로젝트 배정</CardTitle>
-            <CardDescription>
-              참여 중인 프로젝트를 선택하고 정산 상태를 관리하세요.
-            </CardDescription>
+            <CardDescription>참여 중인 프로젝트를 선택하고 정산 상태를 관리하세요.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center">
@@ -437,10 +428,7 @@ export default function EditInfluencerPage() {
                   projectAssignments.map((assignment, index) => (
                     <TableRow key={`${assignment.projectId || "new"}-${index}`}>
                       <TableCell>
-                        <Select
-                          value={assignment.projectId}
-                          onValueChange={(value) => updateAssignment(index, "projectId", value)}
-                        >
+                        <Select value={assignment.projectId} onValueChange={(value) => updateAssignment(index, "projectId", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="프로젝트 선택" />
                           </SelectTrigger>
@@ -453,7 +441,6 @@ export default function EditInfluencerPage() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-
                       <TableCell>
                         <Input
                           type="number"
@@ -462,7 +449,6 @@ export default function EditInfluencerPage() {
                           min={0}
                         />
                       </TableCell>
-
                       <TableCell>
                         <Select
                           value={assignment.paymentStatus}
@@ -478,7 +464,6 @@ export default function EditInfluencerPage() {
                           </SelectContent>
                         </Select>
                       </TableCell>
-
                       <TableCell className="text-right">
                         <Button
                           type="button"

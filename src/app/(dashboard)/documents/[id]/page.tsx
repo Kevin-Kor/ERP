@@ -271,7 +271,7 @@ export default function DocumentDetailPage() {
                 className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
               >
                 <Building2 className="h-4 w-4" />
-                {document.client.name}
+                {document.client?.name || "클라이언트 미지정"}
               </Link>
             </div>
             {document.project && (
