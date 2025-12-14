@@ -31,18 +31,27 @@ function formatAmount(amount: number): string {
 // 퍼센트 변화율 계산
 function getChangePercent(current: number, previous: number): string {
   if (previous === 0) {
-    return current > 0 ? "+∞%" : "0%";
+    return current > 0 ? "+∞%" : "-";
   }
   const change = ((current - previous) / previous) * 100;
   const sign = change >= 0 ? "+" : "";
   return `${sign}${change.toFixed(1)}%`;
 }
 
+// 변화 이모지
+function getChangeEmoji(current: number, previous: number): string {
+  if (previous === 0) return "";
+  const change = ((current - previous) / previous) * 100;
+  if (change > 10) return "📈";
+  if (change < -10) return "📉";
+  return "";
+}
+
 // 이번 주 시작/끝 날짜 계산 (월요일 시작)
 function getWeekRange(date: Date): { start: Date; end: Date } {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // 월요일로 조정
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
 
   const start = new Date(d.setDate(diff));
   start.setHours(0, 0, 0, 0);
@@ -68,6 +77,20 @@ function getLastWeekRange(date: Date): { start: Date; end: Date } {
   return { start: lastWeekStart, end: lastWeekEnd };
 }
 
+// 다음 주 시작/끝 날짜 계산
+function getNextWeekRange(date: Date): { start: Date; end: Date } {
+  const thisWeek = getWeekRange(date);
+  const nextWeekStart = new Date(thisWeek.end);
+  nextWeekStart.setDate(nextWeekStart.getDate() + 1);
+  nextWeekStart.setHours(0, 0, 0, 0);
+
+  const nextWeekEnd = new Date(nextWeekStart);
+  nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+  nextWeekEnd.setHours(23, 59, 59, 999);
+
+  return { start: nextWeekStart, end: nextWeekEnd };
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!verifyCronAuth(request)) {
@@ -77,20 +100,19 @@ export async function POST(request: NextRequest) {
     const today = new Date();
     const thisWeek = getWeekRange(today);
     const lastWeek = getLastWeekRange(today);
+    const nextWeek = getNextWeekRange(today);
 
-    // 1. 이번 주 매출/지출 조회
+    // 1. 이번 주/지난 주 거래 조회
     const thisWeekTransactions = await prisma.transaction.findMany({
-      where: {
-        date: { gte: thisWeek.start, lte: thisWeek.end },
-      },
+      where: { date: { gte: thisWeek.start, lte: thisWeek.end } },
+      include: { Client: { select: { name: true } } },
     });
 
     const lastWeekTransactions = await prisma.transaction.findMany({
-      where: {
-        date: { gte: lastWeek.start, lte: lastWeek.end },
-      },
+      where: { date: { gte: lastWeek.start, lte: lastWeek.end } },
     });
 
+    // 매출/지출 계산
     const thisWeekRevenue = thisWeekTransactions
       .filter((t) => t.type === "REVENUE")
       .reduce((sum, t) => sum + t.amount, 0);
@@ -106,7 +128,51 @@ export async function POST(request: NextRequest) {
       .filter((t) => t.type === "EXPENSE")
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // 2. 미수금 현황
+    // 2. 지출 카테고리별 분석
+    const expenseByCategory = thisWeekTransactions
+      .filter((t) => t.type === "EXPENSE")
+      .reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const categoryLabels: Record<string, string> = {
+      FOOD: "식비",
+      TRANSPORTATION: "교통비",
+      SUPPLIES: "사무용품",
+      AD_EXPENSE: "광고비",
+      INFLUENCER_FEE: "인플루언서",
+      CONTENT_PRODUCTION: "콘텐츠 제작",
+      OPERATIONS: "운영비",
+      SALARY: "급여",
+      OFFICE_RENT: "임대료",
+      OTHER_EXPENSE: "기타",
+    };
+
+    const topExpenses = Object.entries(expenseByCategory)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 3)
+      .map(([cat, amount]: [string, number]) => ({
+        category: categoryLabels[cat] || cat,
+        amount,
+        percent: thisWeekExpense > 0 ? ((amount / thisWeekExpense) * 100).toFixed(0) : "0",
+      }));
+
+    // 3. 클라이언트별 이번 주 매출
+    const revenueByClient = thisWeekTransactions
+      .filter((t) => t.type === "REVENUE" && t.Client)
+      .reduce((acc, t) => {
+        const clientName = t.Client?.name || "미지정";
+        acc[clientName] = (acc[clientName] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const topClients = Object.entries(revenueByClient)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 3)
+      .map(([name, amount]: [string, number]) => ({ name, amount }));
+
+    // 4. 미수금 현황
     const unpaidRevenue = await prisma.transaction.aggregate({
       where: {
         type: "REVENUE",
@@ -116,116 +182,159 @@ export async function POST(request: NextRequest) {
       _count: true,
     });
 
-    // 3. 정산 대기 현황
+    // 5. 정산 현황
     const pendingSettlements = await prisma.projectInfluencer.findMany({
-      where: {
-        paymentStatus: { in: ["PENDING", "REQUESTED"] },
-      },
+      where: { paymentStatus: { in: ["PENDING", "REQUESTED"] } },
       include: {
         Influencer: { select: { name: true } },
-        Project: { select: { name: true } },
+        Project: { select: { name: true, Client: { select: { name: true } } } },
       },
+      orderBy: { paymentDueDate: "asc" },
     });
 
     const totalPendingSettlement = pendingSettlements.reduce((sum, s) => sum + s.fee, 0);
 
-    // 4. 이번 주 마감 프로젝트
-    const projectsEndingThisWeek = await prisma.project.findMany({
+    // 이번 주 마감인 정산
+    const settlementsDueThisWeek = pendingSettlements.filter(
+      (s) => s.paymentDueDate && s.paymentDueDate >= thisWeek.start && s.paymentDueDate <= thisWeek.end
+    );
+
+    // 6. 프로젝트 현황
+    const activeProjects = await prisma.project.count({ where: { status: "IN_PROGRESS" } });
+    const quotingProjects = await prisma.project.count({ where: { status: "QUOTING" } });
+
+    // 이번 주 완료된 프로젝트
+    const completedThisWeek = await prisma.project.findMany({
+      where: {
+        status: "COMPLETED",
+        updatedAt: { gte: thisWeek.start, lte: thisWeek.end },
+      },
+      include: { Client: { select: { name: true } } },
+    });
+
+    // 다음 주 마감 예정 프로젝트
+    const projectsEndingNextWeek = await prisma.project.findMany({
       where: {
         status: { in: ["IN_PROGRESS", "QUOTING"] },
-        endDate: { gte: thisWeek.start, lte: thisWeek.end },
+        endDate: { gte: nextWeek.start, lte: nextWeek.end },
       },
-      include: {
-        Client: { select: { name: true } },
-      },
+      include: { Client: { select: { name: true } } },
     });
 
-    // 5. 진행 중인 프로젝트 현황
-    const activeProjects = await prisma.project.count({
-      where: { status: "IN_PROGRESS" },
-    });
-
-    const quotingProjects = await prisma.project.count({
-      where: { status: "QUOTING" },
-    });
-
-    // 6. 세금계산서 미발행 프로젝트
+    // 7. 세금계산서 미발행 프로젝트
     const projectsWithoutTaxInvoice = await prisma.project.findMany({
       where: {
         status: "COMPLETED",
-        Document: {
-          none: { type: "TAX_INVOICE" },
-        },
+        Document: { none: { type: "TAX_INVOICE" } },
       },
-      include: {
-        Client: { select: { name: true } },
-      },
-      take: 5,
+      include: { Client: { select: { name: true } } },
     });
 
-    // 리포트 메시지 생성
+    // 8. 이번 주 협업 인플루언서
+    const influencersThisWeek = await prisma.projectInfluencer.findMany({
+      where: { createdAt: { gte: thisWeek.start, lte: thisWeek.end } },
+      include: { Influencer: { select: { name: true } } },
+      distinct: ["influencerId"],
+    });
+
+    // ========== 리포트 메시지 생성 ==========
     const weekLabel = `${thisWeek.start.getMonth() + 1}/${thisWeek.start.getDate()} ~ ${thisWeek.end.getMonth() + 1}/${thisWeek.end.getDate()}`;
 
     let message = `📊 *주간 현황 리포트*\n`;
-    message += `📅 ${weekLabel}\n`;
-    message += `${"━".repeat(25)}\n\n`;
+    message += `📅 ${thisWeek.start.getFullYear()}년 ${weekLabel}\n`;
+    message += `${"━".repeat(28)}\n\n`;
 
-    // 재무 요약
-    message += `💰 *재무 요약*\n`;
-    message += `• 매출: ${formatAmount(thisWeekRevenue)} (${getChangePercent(thisWeekRevenue, lastWeekRevenue)})\n`;
-    message += `• 지출: ${formatAmount(thisWeekExpense)} (${getChangePercent(thisWeekExpense, lastWeekExpense)})\n`;
-    message += `• 순이익: ${formatAmount(thisWeekProfit)}\n\n`;
+    // 💰 재무 요약
+    message += `💰 *이번 주 재무 요약*\n`;
+    message += `┌─────────────────────────┐\n`;
+    message += `│ 매출: ${formatAmount(thisWeekRevenue).padEnd(12)} ${getChangeEmoji(thisWeekRevenue, lastWeekRevenue)} ${getChangePercent(thisWeekRevenue, lastWeekRevenue)}\n`;
+    message += `│ 지출: ${formatAmount(thisWeekExpense).padEnd(12)} ${getChangeEmoji(thisWeekExpense, lastWeekExpense)} ${getChangePercent(thisWeekExpense, lastWeekExpense)}\n`;
+    message += `│ 순이익: ${formatAmount(thisWeekProfit)}\n`;
+    message += `└─────────────────────────┘\n\n`;
 
-    // 미수금 현황
-    message += `📋 *미결 현황*\n`;
+    // 📉 지출 분석
+    if (topExpenses.length > 0) {
+      message += `📉 *지출 TOP 3*\n`;
+      topExpenses.forEach((e, i) => {
+        message += `${i + 1}. ${e.category}: ${formatAmount(e.amount)} (${e.percent}%)\n`;
+      });
+      message += `\n`;
+    }
+
+    // 🏆 클라이언트별 매출
+    if (topClients.length > 0) {
+      message += `🏆 *클라이언트별 매출 TOP 3*\n`;
+      topClients.forEach((c, i) => {
+        message += `${i + 1}. ${c.name}: ${formatAmount(c.amount)}\n`;
+      });
+      message += `\n`;
+    }
+
+    // ⚠️ 미결 현황
+    message += `⚠️ *미결 현황*\n`;
     message += `• 미수금: ${formatAmount(unpaidRevenue._sum.amount || 0)} (${unpaidRevenue._count}건)\n`;
-    message += `• 정산 대기: ${formatAmount(totalPendingSettlement)} (${pendingSettlements.length}건)\n\n`;
+    message += `• 정산 대기: ${formatAmount(totalPendingSettlement)} (${pendingSettlements.length}건)\n`;
+    if (settlementsDueThisWeek.length > 0) {
+      message += `• 🔴 이번 주 정산 마감: ${settlementsDueThisWeek.length}건\n`;
+    }
+    message += `\n`;
 
-    // 프로젝트 현황
-    message += `📁 *프로젝트*\n`;
-    message += `• 진행 중: ${activeProjects}건\n`;
-    message += `• 견적 중: ${quotingProjects}건\n`;
+    // 📁 프로젝트 현황
+    message += `📁 *프로젝트 현황*\n`;
+    message += `• 진행 중: ${activeProjects}건 | 견적 중: ${quotingProjects}건\n`;
 
-    if (projectsEndingThisWeek.length > 0) {
-      message += `\n⏰ *이번 주 마감 예정*\n`;
-      projectsEndingThisWeek.forEach((p) => {
+    if (completedThisWeek.length > 0) {
+      message += `\n✅ *이번 주 완료* (${completedThisWeek.length}건)\n`;
+      completedThisWeek.slice(0, 3).forEach((p) => {
+        message += `• ${p.Client.name} - ${p.name}\n`;
+      });
+      if (completedThisWeek.length > 3) {
+        message += `  _...외 ${completedThisWeek.length - 3}건_\n`;
+      }
+    }
+
+    if (projectsEndingNextWeek.length > 0) {
+      message += `\n⏰ *다음 주 마감 예정* (${projectsEndingNextWeek.length}건)\n`;
+      projectsEndingNextWeek.forEach((p) => {
         const endDate = new Date(p.endDate);
         message += `• ${p.Client.name} - ${p.name} (${endDate.getMonth() + 1}/${endDate.getDate()})\n`;
       });
     }
 
-    // 세금계산서 미발행
+    // 📄 세금계산서 미발행
     if (projectsWithoutTaxInvoice.length > 0) {
-      message += `\n📄 *세금계산서 미발행*\n`;
-      projectsWithoutTaxInvoice.forEach((p) => {
+      message += `\n📄 *세금계산서 미발행* (${projectsWithoutTaxInvoice.length}건)\n`;
+      projectsWithoutTaxInvoice.slice(0, 3).forEach((p) => {
         message += `• ${p.Client.name} - ${p.name} (${formatAmount(p.contractAmount)})\n`;
       });
-      if (projectsWithoutTaxInvoice.length >= 5) {
-        message += `• ... 외 더 있음\n`;
+      if (projectsWithoutTaxInvoice.length > 3) {
+        message += `  _...외 ${projectsWithoutTaxInvoice.length - 3}건_\n`;
       }
     }
 
-    // 정산 대기 상세 (상위 5건)
-    if (pendingSettlements.length > 0) {
-      message += `\n💸 *정산 대기 상세* (상위 5건)\n`;
-      const sortedSettlements = pendingSettlements
-        .sort((a, b) => {
-          if (!a.paymentDueDate) return 1;
-          if (!b.paymentDueDate) return -1;
-          return a.paymentDueDate.getTime() - b.paymentDueDate.getTime();
-        })
-        .slice(0, 5);
-
-      sortedSettlements.forEach((s) => {
+    // 💸 이번 주 정산 마감
+    if (settlementsDueThisWeek.length > 0) {
+      message += `\n💸 *이번 주 정산 마감*\n`;
+      settlementsDueThisWeek.slice(0, 5).forEach((s) => {
         const dueDate = s.paymentDueDate
           ? `${s.paymentDueDate.getMonth() + 1}/${s.paymentDueDate.getDate()}`
-          : "미정";
-        message += `• ${s.Influencer.name} - ${formatAmount(s.fee)} (마감: ${dueDate})\n`;
+          : "";
+        message += `• ${s.Influencer.name} - ${formatAmount(s.fee)} (${dueDate})\n`;
       });
+      if (settlementsDueThisWeek.length > 5) {
+        message += `  _...외 ${settlementsDueThisWeek.length - 5}건_\n`;
+      }
     }
 
-    message += `\n${"━".repeat(25)}\n`;
-    message += `_자동 생성된 리포트입니다._`;
+    // 👤 이번 주 협업 인플루언서
+    if (influencersThisWeek.length > 0) {
+      message += `\n👤 *이번 주 신규 협업*: ${influencersThisWeek.length}명\n`;
+      const names = influencersThisWeek.slice(0, 5).map((i) => i.Influencer.name);
+      message += `• ${names.join(", ")}${influencersThisWeek.length > 5 ? ` 외 ${influencersThisWeek.length - 5}명` : ""}\n`;
+    }
+
+    message += `\n${"━".repeat(28)}\n`;
+    message += `_매주 월요일 오전 9시 자동 발송_`;
 
     // Slack으로 전송
     if (SLACK_CHANNEL_ID) {
@@ -244,7 +353,9 @@ export async function POST(request: NextRequest) {
         pendingSettlements: pendingSettlements.length,
         activeProjects,
         quotingProjects,
-        projectsEndingThisWeek: projectsEndingThisWeek.length,
+        completedThisWeek: completedThisWeek.length,
+        projectsEndingNextWeek: projectsEndingNextWeek.length,
+        taxInvoicePending: projectsWithoutTaxInvoice.length,
       },
     });
   } catch (error) {

@@ -31,11 +31,20 @@ function formatAmount(amount: number): string {
 // 퍼센트 변화율 계산
 function getChangePercent(current: number, previous: number): string {
   if (previous === 0) {
-    return current > 0 ? "+∞%" : "0%";
+    return current > 0 ? "+∞%" : "-";
   }
   const change = ((current - previous) / previous) * 100;
   const sign = change >= 0 ? "+" : "";
   return `${sign}${change.toFixed(1)}%`;
+}
+
+// 변화 이모지
+function getChangeEmoji(current: number, previous: number): string {
+  if (previous === 0) return "";
+  const change = ((current - previous) / previous) * 100;
+  if (change > 10) return "📈";
+  if (change < -10) return "📉";
+  return "";
 }
 
 // 월 범위 계산
@@ -45,10 +54,14 @@ function getMonthRange(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-// 지난 달 범위 계산
-function getLastMonthRange(date: Date): { start: Date; end: Date } {
-  const lastMonth = new Date(date.getFullYear(), date.getMonth() - 1, 1);
-  return getMonthRange(lastMonth);
+// N개월 전 범위 계산
+function getMonthRangeOffset(date: Date, offset: number): { start: Date; end: Date; label: string } {
+  const targetDate = new Date(date.getFullYear(), date.getMonth() - offset, 1);
+  const range = getMonthRange(targetDate);
+  return {
+    ...range,
+    label: `${targetDate.getMonth() + 1}월`,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -59,118 +72,46 @@ export async function POST(request: NextRequest) {
 
     const today = new Date();
     const thisMonth = getMonthRange(today);
-    const lastMonth = getLastMonthRange(today);
+    const lastMonth = getMonthRangeOffset(today, 1);
+    const twoMonthsAgo = getMonthRangeOffset(today, 2);
 
-    // 1. 이번 달/지난 달 거래 조회
-    const thisMonthTransactions = await prisma.transaction.findMany({
-      where: {
-        date: { gte: thisMonth.start, lte: thisMonth.end },
-      },
-    });
+    // ========== 1. 최근 3개월 매출/지출 조회 ==========
+    const [thisMonthTx, lastMonthTx, twoMonthsAgoTx] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { date: { gte: thisMonth.start, lte: thisMonth.end } },
+        include: { Client: { select: { name: true } } },
+      }),
+      prisma.transaction.findMany({
+        where: { date: { gte: lastMonth.start, lte: lastMonth.end } },
+      }),
+      prisma.transaction.findMany({
+        where: { date: { gte: twoMonthsAgo.start, lte: twoMonthsAgo.end } },
+      }),
+    ]);
 
-    const lastMonthTransactions = await prisma.transaction.findMany({
-      where: {
-        date: { gte: lastMonth.start, lte: lastMonth.end },
-      },
-    });
+    // 월별 매출/지출 계산
+    const calcMonthStats = (transactions: typeof thisMonthTx) => {
+      const revenue = transactions.filter((t) => t.type === "REVENUE").reduce((sum, t) => sum + t.amount, 0);
+      const expense = transactions.filter((t) => t.type === "EXPENSE").reduce((sum, t) => sum + t.amount, 0);
+      return { revenue, expense, profit: revenue - expense };
+    };
 
-    // 매출/지출 계산
-    const thisMonthRevenue = thisMonthTransactions
-      .filter((t) => t.type === "REVENUE")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const thisMonthExpense = thisMonthTransactions
-      .filter((t) => t.type === "EXPENSE")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const thisMonthProfit = thisMonthRevenue - thisMonthExpense;
-    const profitMargin = thisMonthRevenue > 0
-      ? ((thisMonthProfit / thisMonthRevenue) * 100).toFixed(1)
+    const thisMonthStats = calcMonthStats(thisMonthTx);
+    const lastMonthStats = calcMonthStats(lastMonthTx);
+    const twoMonthsAgoStats = calcMonthStats(twoMonthsAgoTx);
+
+    const profitMargin = thisMonthStats.revenue > 0
+      ? ((thisMonthStats.profit / thisMonthStats.revenue) * 100).toFixed(1)
       : "0";
 
-    const lastMonthRevenue = lastMonthTransactions
-      .filter((t) => t.type === "REVENUE")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const lastMonthExpense = lastMonthTransactions
-      .filter((t) => t.type === "EXPENSE")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // 2. 카테고리별 지출 분석
-    const expenseByCategory = thisMonthTransactions
+    // ========== 2. 지출 카테고리별 분석 ==========
+    const expenseByCategory = thisMonthTx
       .filter((t) => t.type === "EXPENSE")
       .reduce((acc, t) => {
         acc[t.category] = (acc[t.category] || 0) + t.amount;
         return acc;
       }, {} as Record<string, number>);
 
-    const sortedExpenses = Object.entries(expenseByCategory)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
-
-    // 3. 이번 달 완료 프로젝트
-    const completedProjects = await prisma.project.count({
-      where: {
-        status: "COMPLETED",
-        updatedAt: { gte: thisMonth.start, lte: thisMonth.end },
-      },
-    });
-
-    // 4. 이번 달 신규 클라이언트
-    const newClients = await prisma.client.count({
-      where: {
-        createdAt: { gte: thisMonth.start, lte: thisMonth.end },
-      },
-    });
-
-    // 5. 이번 달 협업 인플루언서 수
-    const activeInfluencers = await prisma.projectInfluencer.findMany({
-      where: {
-        createdAt: { gte: thisMonth.start, lte: thisMonth.end },
-      },
-      select: { influencerId: true },
-      distinct: ["influencerId"],
-    });
-
-    // 6. 정산 완료/대기 현황
-    const settlementStats = await prisma.projectInfluencer.groupBy({
-      by: ["paymentStatus"],
-      _count: true,
-      _sum: { fee: true },
-    });
-
-    const completedSettlement = settlementStats.find((s) => s.paymentStatus === "COMPLETED");
-    const pendingSettlement = settlementStats.filter((s) =>
-      s.paymentStatus === "PENDING" || s.paymentStatus === "REQUESTED"
-    );
-
-    const totalPendingFee = pendingSettlement.reduce((sum, s) => sum + (s._sum.fee || 0), 0);
-    const totalPendingCount = pendingSettlement.reduce((sum, s) => sum + s._count, 0);
-
-    // 7. 상위 클라이언트 (매출 기준)
-    const topClients = await prisma.transaction.groupBy({
-      by: ["clientId"],
-      where: {
-        type: "REVENUE",
-        date: { gte: thisMonth.start, lte: thisMonth.end },
-        clientId: { not: null },
-      },
-      _sum: { amount: true },
-      orderBy: { _sum: { amount: "desc" } },
-      take: 3,
-    });
-
-    const topClientDetails = await Promise.all(
-      topClients.map(async (tc) => {
-        const client = await prisma.client.findUnique({
-          where: { id: tc.clientId! },
-          select: { name: true },
-        });
-        return {
-          name: client?.name || "알 수 없음",
-          amount: tc._sum.amount || 0,
-        };
-      })
-    );
-
-    // 카테고리 한글 매핑
     const categoryLabels: Record<string, string> = {
       FOOD: "식비",
       TRANSPORTATION: "교통비",
@@ -184,52 +125,276 @@ export async function POST(request: NextRequest) {
       OTHER_EXPENSE: "기타",
     };
 
-    // 리포트 메시지 생성
+    const topExpenses = Object.entries(expenseByCategory)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 5)
+      .map(([cat, amount]: [string, number]) => ({
+        category: categoryLabels[cat] || cat,
+        amount,
+        percent: thisMonthStats.expense > 0 ? ((amount / thisMonthStats.expense) * 100).toFixed(0) : "0",
+      }));
+
+    // ========== 3. 수입 카테고리별 분석 ==========
+    const revenueByCategory = thisMonthTx
+      .filter((t) => t.type === "REVENUE")
+      .reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const revenueCategoryLabels: Record<string, string> = {
+      FIXED_MANAGEMENT: "고정 관리비",
+      PROJECT_MANAGEMENT: "프로젝트 관리",
+      AD_REVENUE: "광고 수익",
+      PLATFORM_REVENUE: "플랫폼 수익",
+      CAMPAIGN_FEE: "캠페인 대행",
+      CONSULTING: "컨설팅",
+      OTHER_REVENUE: "기타",
+    };
+
+    const topRevenues = Object.entries(revenueByCategory)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 5)
+      .map(([cat, amount]: [string, number]) => ({
+        category: revenueCategoryLabels[cat] || cat,
+        amount,
+        percent: thisMonthStats.revenue > 0 ? ((amount / thisMonthStats.revenue) * 100).toFixed(0) : "0",
+      }));
+
+    // ========== 4. 클라이언트별 매출 ==========
+    const revenueByClient = thisMonthTx
+      .filter((t) => t.type === "REVENUE" && t.Client)
+      .reduce((acc, t) => {
+        const clientName = t.Client?.name || "미지정";
+        acc[clientName] = (acc[clientName] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const topClients = Object.entries(revenueByClient)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, 5)
+      .map(([name, amount]: [string, number]) => ({
+        name,
+        amount,
+        percent: thisMonthStats.revenue > 0 ? ((amount / thisMonthStats.revenue) * 100).toFixed(0) : "0",
+      }));
+
+    // ========== 5. 프로젝트 현황 ==========
+    const [completedProjects, activeProjects, quotingProjects, newProjects] = await Promise.all([
+      prisma.project.findMany({
+        where: { status: "COMPLETED", updatedAt: { gte: thisMonth.start, lte: thisMonth.end } },
+        include: { Client: { select: { name: true } } },
+      }),
+      prisma.project.count({ where: { status: "IN_PROGRESS" } }),
+      prisma.project.count({ where: { status: "QUOTING" } }),
+      prisma.project.count({
+        where: { createdAt: { gte: thisMonth.start, lte: thisMonth.end } },
+      }),
+    ]);
+
+    const totalContractAmount = completedProjects.reduce((sum, p) => sum + p.contractAmount, 0);
+
+    // ========== 6. 클라이언트 현황 ==========
+    const [newClients, activeClients, fixedVendors] = await Promise.all([
+      prisma.client.count({
+        where: { createdAt: { gte: thisMonth.start, lte: thisMonth.end } },
+      }),
+      prisma.client.count({ where: { status: "ACTIVE" } }),
+      prisma.client.findMany({
+        where: { isFixedVendor: true, status: "ACTIVE" },
+        select: { name: true, monthlyFee: true },
+      }),
+    ]);
+
+    const totalFixedRevenue = fixedVendors.reduce((sum, v) => sum + (v.monthlyFee || 0), 0);
+
+    // ========== 7. 인플루언서 현황 ==========
+    const activeInfluencers = await prisma.projectInfluencer.findMany({
+      where: { createdAt: { gte: thisMonth.start, lte: thisMonth.end } },
+      include: { Influencer: { select: { name: true } } },
+      distinct: ["influencerId"],
+    });
+
+    // 인플루언서별 정산 현황
+    const topInfluencers = await prisma.projectInfluencer.groupBy({
+      by: ["influencerId"],
+      where: { createdAt: { gte: thisMonth.start, lte: thisMonth.end } },
+      _sum: { fee: true },
+      _count: true,
+      orderBy: { _sum: { fee: "desc" } },
+      take: 5,
+    });
+
+    const topInfluencerDetails = await Promise.all(
+      topInfluencers.map(async (ti) => {
+        const inf = await prisma.influencer.findUnique({
+          where: { id: ti.influencerId },
+          select: { name: true },
+        });
+        return {
+          name: inf?.name || "알 수 없음",
+          fee: ti._sum.fee || 0,
+          projectCount: ti._count,
+        };
+      })
+    );
+
+    // ========== 8. 정산 현황 ==========
+    const [completedSettlements, pendingSettlements] = await Promise.all([
+      prisma.projectInfluencer.aggregate({
+        where: {
+          paymentStatus: "COMPLETED",
+          paymentDate: { gte: thisMonth.start, lte: thisMonth.end },
+        },
+        _sum: { fee: true },
+        _count: true,
+      }),
+      prisma.projectInfluencer.findMany({
+        where: { paymentStatus: { in: ["PENDING", "REQUESTED"] } },
+        include: { Influencer: { select: { name: true } } },
+        orderBy: { paymentDueDate: "asc" },
+      }),
+    ]);
+
+    const totalPendingFee = pendingSettlements.reduce((sum, s) => sum + s.fee, 0);
+    const overdueSettlements = pendingSettlements.filter(
+      (s) => s.paymentDueDate && s.paymentDueDate < today
+    );
+
+    // ========== 9. 미수금 현황 ==========
+    const unpaidRevenue = await prisma.transaction.aggregate({
+      where: { type: "REVENUE", paymentStatus: { not: "COMPLETED" } },
+      _sum: { amount: true },
+      _count: true,
+    });
+
+    // ========== 10. 세금계산서 현황 ==========
+    const [taxInvoiceIssued, taxInvoicePending] = await Promise.all([
+      prisma.document.count({
+        where: {
+          type: "TAX_INVOICE",
+          issueDate: { gte: thisMonth.start, lte: thisMonth.end },
+        },
+      }),
+      prisma.project.count({
+        where: {
+          status: "COMPLETED",
+          Document: { none: { type: "TAX_INVOICE" } },
+        },
+      }),
+    ]);
+
+    // ========== 11. 다음 달 예정 ==========
+    const nextMonth = getMonthRangeOffset(today, -1);
+    const projectsNextMonth = await prisma.project.findMany({
+      where: {
+        status: { in: ["IN_PROGRESS", "QUOTING"] },
+        endDate: { gte: nextMonth.start, lte: nextMonth.end },
+      },
+      include: { Client: { select: { name: true } } },
+      take: 5,
+    });
+
+    // ========== 리포트 메시지 생성 ==========
     const monthLabel = `${today.getFullYear()}년 ${today.getMonth() + 1}월`;
 
-    let message = `📊 *월간 현황 리포트*\n`;
+    let message = `📊 *월간 결산 리포트*\n`;
     message += `📅 ${monthLabel}\n`;
-    message += `${"━".repeat(25)}\n\n`;
+    message += `${"━".repeat(30)}\n\n`;
 
-    // 재무 요약
-    message += `💰 *재무 요약*\n`;
-    message += `• 매출: ${formatAmount(thisMonthRevenue)} (${getChangePercent(thisMonthRevenue, lastMonthRevenue)})\n`;
-    message += `• 지출: ${formatAmount(thisMonthExpense)} (${getChangePercent(thisMonthExpense, lastMonthExpense)})\n`;
-    message += `• 순이익: ${formatAmount(thisMonthProfit)}\n`;
-    message += `• 이익률: ${profitMargin}%\n\n`;
+    // 💰 재무 요약
+    message += `💰 *이번 달 재무 요약*\n`;
+    message += `┌──────────────────────────────┐\n`;
+    message += `│ 매출: ${formatAmount(thisMonthStats.revenue).padEnd(14)} ${getChangeEmoji(thisMonthStats.revenue, lastMonthStats.revenue)} ${getChangePercent(thisMonthStats.revenue, lastMonthStats.revenue)}\n`;
+    message += `│ 지출: ${formatAmount(thisMonthStats.expense).padEnd(14)} ${getChangeEmoji(thisMonthStats.expense, lastMonthStats.expense)} ${getChangePercent(thisMonthStats.expense, lastMonthStats.expense)}\n`;
+    message += `│ 순이익: ${formatAmount(thisMonthStats.profit)}\n`;
+    message += `│ 이익률: ${profitMargin}%\n`;
+    message += `└──────────────────────────────┘\n\n`;
 
-    // 지출 카테고리 Top 5
-    if (sortedExpenses.length > 0) {
-      message += `📉 *지출 상위 카테고리*\n`;
-      sortedExpenses.forEach(([category, amount]: [string, number], index) => {
-        const label = categoryLabels[category] || category;
-        const percent = ((amount / thisMonthExpense) * 100).toFixed(1);
-        message += `${index + 1}. ${label}: ${formatAmount(amount)} (${percent}%)\n`;
+    // 📈 최근 3개월 추이
+    message += `📈 *최근 3개월 추이*\n`;
+    message += `┌─────────┬──────────┬──────────┐\n`;
+    message += `│         │  매출    │  순이익  │\n`;
+    message += `├─────────┼──────────┼──────────┤\n`;
+    message += `│ ${twoMonthsAgo.label.padEnd(7)}│ ${formatAmount(twoMonthsAgoStats.revenue).padEnd(8)}│ ${formatAmount(twoMonthsAgoStats.profit).padEnd(8)}│\n`;
+    message += `│ ${lastMonth.label.padEnd(7)}│ ${formatAmount(lastMonthStats.revenue).padEnd(8)}│ ${formatAmount(lastMonthStats.profit).padEnd(8)}│\n`;
+    message += `│ ${(today.getMonth() + 1) + "월".padEnd(6)}│ ${formatAmount(thisMonthStats.revenue).padEnd(8)}│ ${formatAmount(thisMonthStats.profit).padEnd(8)}│\n`;
+    message += `└─────────┴──────────┴──────────┘\n\n`;
+
+    // 🏆 클라이언트별 매출 TOP 5
+    if (topClients.length > 0) {
+      message += `🏆 *클라이언트별 매출 TOP 5*\n`;
+      topClients.forEach((c, i) => {
+        message += `${i + 1}. ${c.name}: ${formatAmount(c.amount)} (${c.percent}%)\n`;
       });
       message += `\n`;
     }
 
-    // 프로젝트 & 클라이언트
-    message += `📁 *활동 현황*\n`;
-    message += `• 완료 프로젝트: ${completedProjects}건\n`;
-    message += `• 신규 클라이언트: ${newClients}건\n`;
-    message += `• 협업 인플루언서: ${activeInfluencers.length}명\n\n`;
-
-    // 정산 현황
-    message += `💸 *정산 현황*\n`;
-    message += `• 완료: ${formatAmount(completedSettlement?._sum.fee || 0)} (${completedSettlement?._count || 0}건)\n`;
-    message += `• 대기: ${formatAmount(totalPendingFee)} (${totalPendingCount}건)\n\n`;
-
-    // 상위 클라이언트
-    if (topClientDetails.length > 0) {
-      message += `🏆 *매출 상위 클라이언트*\n`;
-      topClientDetails.forEach((client, index) => {
-        message += `${index + 1}. ${client.name}: ${formatAmount(client.amount)}\n`;
+    // 💵 수입 구성
+    if (topRevenues.length > 0) {
+      message += `💵 *수입 구성*\n`;
+      topRevenues.forEach((r, i) => {
+        message += `${i + 1}. ${r.category}: ${formatAmount(r.amount)} (${r.percent}%)\n`;
       });
+      if (totalFixedRevenue > 0) {
+        message += `   └ 고정 거래처 수익: ${formatAmount(totalFixedRevenue)} (${fixedVendors.length}곳)\n`;
+      }
+      message += `\n`;
     }
 
-    message += `\n${"━".repeat(25)}\n`;
-    message += `_자동 생성된 리포트입니다._`;
+    // 📉 지출 분석 TOP 5
+    if (topExpenses.length > 0) {
+      message += `📉 *지출 분석 TOP 5*\n`;
+      topExpenses.forEach((e, i) => {
+        message += `${i + 1}. ${e.category}: ${formatAmount(e.amount)} (${e.percent}%)\n`;
+      });
+      message += `\n`;
+    }
+
+    // 📁 프로젝트 & 클라이언트
+    message += `📁 *활동 현황*\n`;
+    message += `• 신규 프로젝트: ${newProjects}건\n`;
+    message += `• 완료 프로젝트: ${completedProjects.length}건 (계약금 ${formatAmount(totalContractAmount)})\n`;
+    message += `• 진행 중: ${activeProjects}건 | 견적 중: ${quotingProjects}건\n`;
+    message += `• 신규 클라이언트: ${newClients}건 | 활성 클라이언트: ${activeClients}건\n\n`;
+
+    // 👤 인플루언서 현황
+    message += `👤 *인플루언서 현황*\n`;
+    message += `• 이번 달 협업: ${activeInfluencers.length}명\n`;
+    if (topInfluencerDetails.length > 0) {
+      message += `• 협업 TOP 3:\n`;
+      topInfluencerDetails.slice(0, 3).forEach((inf, i) => {
+        message += `  ${i + 1}. ${inf.name}: ${formatAmount(inf.fee)} (${inf.projectCount}건)\n`;
+      });
+    }
+    message += `\n`;
+
+    // 💸 정산 현황
+    message += `💸 *정산 현황*\n`;
+    message += `• 이번 달 완료: ${formatAmount(completedSettlements._sum.fee || 0)} (${completedSettlements._count}건)\n`;
+    message += `• 대기 중: ${formatAmount(totalPendingFee)} (${pendingSettlements.length}건)\n`;
+    if (overdueSettlements.length > 0) {
+      message += `• 🔴 연체: ${overdueSettlements.length}건 (${formatAmount(overdueSettlements.reduce((sum, s) => sum + s.fee, 0))})\n`;
+    }
+    message += `\n`;
+
+    // ⚠️ 미결 현황
+    message += `⚠️ *미결 현황*\n`;
+    message += `• 미수금: ${formatAmount(unpaidRevenue._sum.amount || 0)} (${unpaidRevenue._count}건)\n`;
+    message += `• 세금계산서 발행: ${taxInvoiceIssued}건 | 미발행: ${taxInvoicePending}건\n\n`;
+
+    // ⏰ 다음 달 예정
+    if (projectsNextMonth.length > 0) {
+      message += `⏰ *${today.getMonth() + 2}월 마감 예정* (${projectsNextMonth.length}건)\n`;
+      projectsNextMonth.forEach((p) => {
+        const endDate = new Date(p.endDate);
+        message += `• ${p.Client.name} - ${p.name} (${endDate.getMonth() + 1}/${endDate.getDate()})\n`;
+      });
+      message += `\n`;
+    }
+
+    message += `${"━".repeat(30)}\n`;
+    message += `_매월 1일 오전 9시 자동 발송_`;
 
     // Slack으로 전송
     if (SLACK_CHANNEL_ID) {
@@ -241,18 +406,21 @@ export async function POST(request: NextRequest) {
       message: "월간 리포트 발송 완료",
       data: {
         period: monthLabel,
-        revenue: thisMonthRevenue,
-        expense: thisMonthExpense,
-        profit: thisMonthProfit,
+        revenue: thisMonthStats.revenue,
+        expense: thisMonthStats.expense,
+        profit: thisMonthStats.profit,
         profitMargin: parseFloat(profitMargin),
-        completedProjects,
+        completedProjects: completedProjects.length,
         newClients,
         activeInfluencers: activeInfluencers.length,
-        pendingSettlements: totalPendingCount,
-        topCategories: sortedExpenses.map(([cat, amt]) => ({
-          category: categoryLabels[cat] || cat,
-          amount: amt,
-        })),
+        pendingSettlements: pendingSettlements.length,
+        overdueSettlements: overdueSettlements.length,
+        taxInvoicePending,
+        trend: {
+          twoMonthsAgo: twoMonthsAgoStats,
+          lastMonth: lastMonthStats,
+          thisMonth: thisMonthStats,
+        },
       },
     });
   } catch (error) {
