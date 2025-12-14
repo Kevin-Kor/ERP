@@ -45,6 +45,7 @@ import {
   MoreHorizontal,
   Trash2,
   Loader2,
+  Instagram,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
