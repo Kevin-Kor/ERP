@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, STATUS_LABELS, PLATFORM_OPTIONS, CONTENT_TYPE_OPTIONS, VIDEO_STYLE_OPTIONS } from "@/lib/utils";
 import { DeleteProjectButton } from "./delete-project-button";
+import { ProjectCollaborators } from "./project-collaborators";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -102,16 +103,9 @@ export default async function ProjectDetailPage({ params }: PageProps) {
     const videoStyle = (project as any).videoStyle;
     const videoCount = (project as any).videoCount || 1;
 
-    // 정산 상태별 통계
-    const settlementStats = {
-        pending: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "PENDING").length,
-        requested: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "REQUESTED").length,
-        completed: project.ProjectInfluencer.filter(pi => pi.paymentStatus === "COMPLETED").length,
-    };
-
     const totalInfluencerCost = project.ProjectInfluencer.reduce((sum, pi) => sum + pi.fee, 0);
     const paidAmount = project.ProjectInfluencer
-        .filter(pi => pi.paymentStatus === "COMPLETED")
+        .filter(pi => (pi.paymentStatus || "").toLowerCase() === "completed")
         .reduce((sum, pi) => sum + pi.fee, 0);
 
     return (
@@ -300,92 +294,13 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                 </TabsContent>
 
                 <TabsContent value="influencers">
-                    <Card>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle>참여 인플루언서</CardTitle>
-                                    <CardDescription>
-                                        정산 대기 {settlementStats.pending}건 • 
-                                        요청됨 {settlementStats.requested}건 • 
-                                        완료 {settlementStats.completed}건
-                                    </CardDescription>
-                                </div>
-                                <Button asChild variant="outline" size="sm">
-                                    <Link href="/settlements">정산 관리</Link>
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            {project.ProjectInfluencer.length === 0 ? (
-                                <div className="text-center py-8">
-                                    <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                    <p className="text-muted-foreground">등록된 인플루언서가 없습니다.</p>
-                                </div>
-                            ) : (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>인플루언서</TableHead>
-                                            <TableHead>SNS</TableHead>
-                                            <TableHead>정산 금액</TableHead>
-                                            <TableHead>정산 상태</TableHead>
-                                            <TableHead>정산일</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {project.ProjectInfluencer.map((pi) => (
-                                            <TableRow key={pi.id}>
-                                                <TableCell>
-                                                    <Link 
-                                                        href={`/influencers/${pi.Influencer.id}`}
-                                                        className="font-medium hover:text-primary"
-                                                    >
-                                                        {pi.Influencer.name}
-                                                    </Link>
-                                                </TableCell>
-                                                <TableCell>
-                                                    {pi.Influencer.instagramId && (
-                                                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                                                            <Instagram className="h-3 w-3" />
-                                                            {pi.Influencer.instagramId}
-                                                        </span>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell className="font-medium">
-                                                    {formatCurrency(pi.fee)}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge
-                                                        variant={
-                                                            pi.paymentStatus === "COMPLETED"
-                                                                ? "success"
-                                                                : pi.paymentStatus === "REQUESTED"
-                                                                ? "warning"
-                                                                : "secondary"
-                                                        }
-                                                    >
-                                                        {pi.paymentStatus === "COMPLETED"
-                                                            ? "완료"
-                                                            : pi.paymentStatus === "REQUESTED"
-                                                            ? "요청됨"
-                                                            : "대기"}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-muted-foreground">
-                                                    {pi.paymentDate
-                                                        ? formatDate(pi.paymentDate)
-                                                        : pi.paymentDueDate
-                                                        ? `예정: ${formatDate(pi.paymentDueDate)}`
-                                                        : "-"}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <ProjectCollaborators
+                        projectId={project.id}
+                        initialCollaborators={project.ProjectInfluencer.map((pi) => ({
+                            ...pi,
+                            influencer: pi.Influencer,
+                        }))}
+                    />
                 </TabsContent>
 
                 <TabsContent value="documents">
