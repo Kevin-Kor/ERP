@@ -91,9 +91,26 @@ interface FixedVendor {
   monthlyFee: number | null;
 }
 
+type SettlementStatus = "pending" | "in_progress" | "completed";
+
+interface SettlementSummary {
+  statusTotals: Record<SettlementStatus, { amount: number; count: number }>;
+  influencerTotals: {
+    influencer: { id: string; name: string; instagramId: string | null };
+    totalFee: number;
+    projects: number;
+  }[];
+  projectTotals: {
+    project: { id: string; name: string; client: { id: string; name: string } };
+    totalFee: number;
+    influencers: number;
+  }[];
+}
+
 export default function FinancePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [settlementSummary, setSettlementSummary] = useState<SettlementSummary | null>(null);
 
   // 월 선택 state
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -147,6 +164,12 @@ export default function FinancePage() {
     memo: "",
   });
 
+  const settlementStatusOptions: { value: SettlementStatus; label: string }[] = [
+    { value: "pending", label: "예정" },
+    { value: "in_progress", label: "진행 중" },
+    { value: "completed", label: "완료" },
+  ];
+
   // 월 옵션 생성 (최근 24개월)
   const monthOptions = useMemo(() => {
     return Array.from({ length: 24 }, (_, i) => {
@@ -193,6 +216,10 @@ export default function FinancePage() {
     fetchFixedVendors();
   }, [selectedMonth]);
 
+  useEffect(() => {
+    fetchSettlementSummary();
+  }, []);
+
   async function fetchTransactions() {
     try {
       setLoading(true);
@@ -217,6 +244,16 @@ export default function FinancePage() {
       setFixedVendors(data.clients || []);
     } catch (error) {
       console.error("Failed to fetch fixed vendors:", error);
+    }
+  }
+
+  async function fetchSettlementSummary() {
+    try {
+      const res = await fetch("/api/settlements/summary");
+      const data = await res.json();
+      setSettlementSummary(data);
+    } catch (error) {
+      console.error("Failed to fetch settlement summary:", error);
     }
   }
 
@@ -677,6 +714,95 @@ export default function FinancePage() {
           </CardContent>
         </Card>
       </div>
+
+      {settlementSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle>정산 집계</CardTitle>
+            <CardDescription>인플루언서/프로젝트 정산 현황 요약</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              {settlementStatusOptions.map((option) => (
+                <div key={option.value} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{option.label}</span>
+                    <Badge variant="outline">{settlementSummary.statusTotals[option.value].count}건</Badge>
+                  </div>
+                  <div className="text-xl font-semibold text-primary mt-1">
+                    {formatCurrency(settlementSummary.statusTotals[option.value].amount)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium">인플루언서별 합계</h3>
+                  <Link href="/settlements" className="text-xs text-primary hover:underline">
+                    정산 관리로 이동
+                  </Link>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>이름</TableHead>
+                      <TableHead className="text-right">합계</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {settlementSummary.influencerTotals.slice(0, 3).map((item) => (
+                      <TableRow key={item.influencer.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{item.influencer.name}</span>
+                            {item.influencer.instagramId && (
+                              <span className="text-xs text-muted-foreground">@{item.influencer.instagramId}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(item.totalFee)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">프로젝트별 합계</h3>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>프로젝트</TableHead>
+                      <TableHead className="text-right">합계</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {settlementSummary.projectTotals.slice(0, 3).map((item) => (
+                      <TableRow key={item.project.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{item.project.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {item.project.client?.name || "클라이언트 미지정"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(item.totalFee)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 수입/지출 2단 레이아웃 */}
       {loading ? (

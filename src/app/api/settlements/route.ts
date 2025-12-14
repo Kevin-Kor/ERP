@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const normalizeStatus = (status?: string) => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -8,7 +15,8 @@ export async function GET(request: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (status && status !== "all") {
-      where.paymentStatus = status;
+      const normalizedStatus = normalizeStatus(status);
+      where.paymentStatus = { in: [normalizedStatus, normalizedStatus.toUpperCase()] };
     }
 
     const settlements = await prisma.projectInfluencer.findMany({
@@ -41,6 +49,7 @@ export async function GET(request: NextRequest) {
     // Transform to lowercase field names
     const transformedSettlements = settlements.map(s => ({
       ...s,
+      paymentStatus: normalizeStatus(s.paymentStatus),
       influencer: s.Influencer,
       project: {
         ...s.Project,

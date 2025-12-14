@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const normalizeStatus = (status?: string) => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,7 +19,7 @@ export async function PATCH(
     const settlement = await prisma.projectInfluencer.update({
       where: { id },
       data: {
-        paymentStatus: body.paymentStatus,
+        paymentStatus: normalizeStatus(body.paymentStatus),
         paymentDate: body.paymentDate ? new Date(body.paymentDate) : null,
       },
     });

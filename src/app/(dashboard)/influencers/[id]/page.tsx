@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,18 +79,30 @@ interface Influencer {
   }>;
 }
 
+type SettlementStatus = "pending" | "in_progress" | "completed";
+
+const normalizeStatus = (status?: string): SettlementStatus => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
 export default function InfluencerDetailPage() {
   const params = useParams();
   const router = useRouter();
   const [influencer, setInfluencer] = useState<Influencer | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [updatingSettlementId, setUpdatingSettlementId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchInfluencer();
-  }, [params.id]);
+  const statusOptions: { value: SettlementStatus; label: string }[] = [
+    { value: "pending", label: "예정" },
+    { value: "in_progress", label: "진행 중" },
+    { value: "completed", label: "완료" },
+  ];
 
-  async function fetchInfluencer() {
+  const fetchInfluencer = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`/api/influencers/${params.id}`);
@@ -97,7 +116,11 @@ export default function InfluencerDetailPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchInfluencer();
+  }, [fetchInfluencer]);
 
   async function handleDelete() {
     setIsDeleting(true);
@@ -118,6 +141,30 @@ export default function InfluencerDetailPage() {
       setIsDeleting(false);
     }
   }
+
+  const handleSettlementStatusChange = async (
+    settlementId: string,
+    newStatus: SettlementStatus
+  ) => {
+    setUpdatingSettlementId(settlementId);
+    try {
+      await fetch(`/api/settlements/${settlementId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentStatus: newStatus,
+          paymentDate: newStatus === "completed" ? new Date().toISOString() : null,
+        }),
+      });
+
+      await fetchInfluencer();
+    } catch (error) {
+      console.error("Failed to update settlement status", error);
+      alert("정산 상태를 업데이트하지 못했습니다.");
+    } finally {
+      setUpdatingSettlementId(null);
+    }
+  };
 
   const getCategoryLabels = (categories: string | null) => {
     if (!categories) return [];
@@ -425,26 +472,28 @@ export default function InfluencerDetailPage() {
                         <TableCell className="text-muted-foreground">
                           {pi.project.client.name}
                         </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(pi.fee)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              pi.paymentStatus === "COMPLETED"
-                                ? "success"
-                                : pi.paymentStatus === "REQUESTED"
-                                ? "warning"
-                                : "secondary"
-                            }
-                          >
-                            {pi.paymentStatus === "COMPLETED"
-                              ? "완료"
-                              : pi.paymentStatus === "REQUESTED"
-                              ? "요청됨"
-                              : "대기"}
-                          </Badge>
-                        </TableCell>
+                      <TableCell className="font-medium">
+                        {formatCurrency(pi.fee)}
+                      </TableCell>
+                      <TableCell className="w-[180px]">
+                        <Select
+                          value={normalizeStatus(pi.paymentStatus)}
+                          onValueChange={(value) =>
+                            handleSettlementStatusChange(pi.id, value as SettlementStatus)
+                          }
+                        >
+                          <SelectTrigger disabled={updatingSettlementId === pi.id}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {statusOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
                         <TableCell className="text-muted-foreground">
                           {pi.paymentDate
                             ? formatDate(pi.paymentDate)

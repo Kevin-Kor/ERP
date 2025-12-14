@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft, Globe, Instagram, Loader2, PlusCircle, Trash2, Youtube } from "lucide-react";
+
+import { INFLUENCER_CATEGORIES } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -15,16 +16,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  ArrowLeft,
-  Loader2,
-  Instagram,
-  Youtube,
-  Globe,
-  PlusCircle,
-  Trash2,
-} from "lucide-react";
-import { INFLUENCER_CATEGORIES } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -43,20 +37,53 @@ import {
 
 type SettlementStatus = "pending" | "in_progress" | "completed";
 
+type ProjectAssignment = {
+  projectId: string;
+  fee: string;
+  paymentStatus: SettlementStatus;
+};
+
 interface ProjectOption {
   id: string;
   name: string;
 }
 
-export default function NewInfluencerPage() {
+interface InfluencerResponse {
+  id: string;
+  name: string;
+  instagramId: string | null;
+  youtubeChannel: string | null;
+  blog: string | null;
+  followerCount: number | null;
+  categories: string | null;
+  phone: string;
+  bankAccount: string | null;
+  priceRange: string | null;
+  memo: string | null;
+  projectInfluencers?: Array<{
+    id: string;
+    project: { id: string; name: string };
+    fee: number;
+    paymentStatus: string;
+  }>;
+}
+
+const normalizeStatus = (status?: string | null): SettlementStatus => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
+export default function EditInfluencerPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const params = useParams();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
-  const [projectAssignments, setProjectAssignments] = useState<
-    { projectId: string; fee: string; paymentStatus: SettlementStatus }[]
-  >([{ projectId: "", fee: "", paymentStatus: "pending" }]);
-
+  const [projectAssignments, setProjectAssignments] = useState<ProjectAssignment[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     instagramId: "",
@@ -70,18 +97,67 @@ export default function NewInfluencerPage() {
   });
 
   useEffect(() => {
-    async function fetchProjects() {
+    async function fetchInfluencer() {
       try {
-        const res = await fetch("/api/projects");
-        const data = await res.json();
-        setProjectOptions(
-          (data.projects || []).map((project: any) => ({
-            id: project.id,
-            name: project.name,
+        setLoading(true);
+        const res = await fetch(`/api/influencers/${params.id}`);
+
+        if (!res.ok) {
+          throw new Error("인플루언서를 불러오지 못했습니다.");
+        }
+
+        const data: InfluencerResponse = await res.json();
+        setFormData({
+          name: data.name || "",
+          instagramId: data.instagramId || "",
+          youtubeChannel: data.youtubeChannel || "",
+          blog: data.blog || "",
+          followerCount: data.followerCount ? String(data.followerCount) : "",
+          phone: data.phone || "",
+          bankAccount: data.bankAccount || "",
+          priceRange: data.priceRange || "",
+          memo: data.memo || "",
+        });
+        setSelectedCategories(data.categories ? data.categories.split(",") : []);
+        setProjectAssignments(
+          (data.projectInfluencers || []).map((pi) => ({
+            projectId: pi.project.id,
+            fee: String(pi.fee ?? ""),
+            paymentStatus: normalizeStatus(pi.paymentStatus),
           }))
         );
       } catch (error) {
+        console.error(error);
+        alert("인플루언서를 불러오지 못했습니다. 목록으로 돌아갑니다.");
+        router.push("/influencers");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchInfluencer();
+  }, [params.id, router]);
+
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        if (!res.ok) {
+          throw new Error("Failed to load projects");
+        }
+
+        const data = await res.json();
+        const options = (Array.isArray(data.projects) ? data.projects : [])
+          .map((project: any) => ({
+            id: project.id,
+            name: project.name,
+          }))
+          .sort((a: ProjectOption, b: ProjectOption) => a.name.localeCompare(b.name));
+
+        setProjectOptions(options);
+      } catch (error) {
         console.error("Failed to load projects", error);
+        setProjectOptions([]);
       }
     }
 
@@ -90,57 +166,9 @@ export default function NewInfluencerPage() {
 
   const handleCategoryChange = (category: string, checked: boolean) => {
     if (checked) {
-      setSelectedCategories([...selectedCategories, category]);
+      setSelectedCategories((prev) => [...prev, category]);
     } else {
-      setSelectedCategories(selectedCategories.filter((c) => c !== category));
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!formData.name || !formData.phone) {
-      alert("이름과 연락처는 필수입니다.");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch("/api/influencers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          followerCount: formData.followerCount
-            ? parseInt(formData.followerCount)
-            : null,
-          categories: selectedCategories.join(",") || null,
-          projectAssignments: projectAssignments
-            .filter((assignment) => assignment.projectId)
-            .map((assignment) => ({
-              projectId: assignment.projectId,
-              fee: assignment.fee ? Number(assignment.fee) : 0,
-              paymentStatus: assignment.paymentStatus,
-            })),
-        }),
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "인플루언서 등록에 실패했습니다.");
-      }
-
-      const influencer = await res.json();
-      router.push(`/influencers/${influencer.id}`);
-      router.refresh();
-    } catch (error) {
-      console.error("Submit error:", error);
-      alert(
-        error instanceof Error ? error.message : "인플루언서 등록에 실패했습니다."
-      );
-    } finally {
-      setLoading(false);
+      setSelectedCategories((prev) => prev.filter((c) => c !== category));
     }
   };
 
@@ -167,32 +195,88 @@ export default function NewInfluencerPage() {
     setProjectAssignments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.name || !formData.phone) {
+      alert("이름과 연락처는 필수입니다.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const res = await fetch(`/api/influencers/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          followerCount: formData.followerCount
+            ? parseInt(formData.followerCount)
+            : null,
+          categories: selectedCategories.join(",") || null,
+          projectAssignments: projectAssignments
+            .filter((assignment) => assignment.projectId)
+            .map((assignment) => {
+              const feeNumber = Number(assignment.fee);
+              return {
+                projectId: assignment.projectId,
+                fee: Number.isFinite(feeNumber) && feeNumber > 0 ? feeNumber : 0,
+                paymentStatus: assignment.paymentStatus,
+              };
+            }),
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "인플루언서 수정에 실패했습니다.");
+      }
+
+      router.push(`/influencers/${params.id}`);
+      router.refresh();
+    } catch (error) {
+      console.error("Submit error:", error);
+      alert(error instanceof Error ? error.message : "인플루언서 수정에 실패했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/influencers">
+          <Link href={`/influencers/${params.id}`}>
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            새 인플루언서 등록
+            인플루언서 수정
           </h1>
           <p className="text-muted-foreground mt-1 text-sm sm:text-base">
-            협업할 인플루언서 정보를 입력하세요.
+            인플루언서 정보를 수정합니다.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-6 lg:grid-cols-2">
           {/* 기본 정보 */}
           <Card>
             <CardHeader>
               <CardTitle>기본 정보</CardTitle>
-              <CardDescription>인플루언서의 기본 정보를 입력하세요.</CardDescription>
+              <CardDescription>인플루언서의 기본 정보를 수정하세요.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -200,9 +284,7 @@ export default function NewInfluencerPage() {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="인플루언서 이름"
                   required
                 />
@@ -213,9 +295,7 @@ export default function NewInfluencerPage() {
                 <Input
                   id="phone"
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   placeholder="010-0000-0000"
                   required
                 />
@@ -253,9 +333,7 @@ export default function NewInfluencerPage() {
                 <Textarea
                   id="memo"
                   value={formData.memo}
-                  onChange={(e) =>
-                    setFormData({ ...formData, memo: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, memo: e.target.value })}
                   placeholder="특이사항, 협업 시 참고사항 등"
                   rows={3}
                 />
@@ -267,7 +345,7 @@ export default function NewInfluencerPage() {
           <Card>
             <CardHeader>
               <CardTitle>SNS 정보</CardTitle>
-              <CardDescription>소셜 미디어 계정 정보를 입력하세요.</CardDescription>
+              <CardDescription>소셜 미디어 계정 정보를 수정하세요.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -296,22 +374,20 @@ export default function NewInfluencerPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, youtubeChannel: e.target.value })
                   }
-                  placeholder="https://youtube.com/@channel"
+                  placeholder="채널 URL"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="blog" className="flex items-center gap-2">
                   <Globe className="h-4 w-4 text-green-500" />
-                  블로그
+                  블로그/기타
                 </Label>
                 <Input
                   id="blog"
                   value={formData.blog}
-                  onChange={(e) =>
-                    setFormData({ ...formData, blog: e.target.value })
-                  }
-                  placeholder="https://blog.naver.com/username"
+                  onChange={(e) => setFormData({ ...formData, blog: e.target.value })}
+                  placeholder="블로그나 기타 링크"
                 />
               </div>
 
@@ -324,35 +400,45 @@ export default function NewInfluencerPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, followerCount: e.target.value })
                   }
-                  placeholder="팔로워 수 (숫자만)"
+                  placeholder="숫자만 입력"
                 />
                 <p className="text-xs text-muted-foreground">
-                  주요 플랫폼의 팔로워/구독자 수를 입력하세요.
+                  예: 150000 (15만)
                 </p>
               </div>
 
-              {/* 카테고리 */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <Label>카테고리</Label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-wrap gap-3">
                   {INFLUENCER_CATEGORIES.map((category) => (
-                    <div key={category.value} className="flex items-center space-x-2">
+                    <label
+                      key={category.value}
+                      className="flex items-center space-x-2 text-sm"
+                    >
                       <Checkbox
-                        id={category.value}
                         checked={selectedCategories.includes(category.value)}
                         onCheckedChange={(checked) =>
-                          handleCategoryChange(category.value, checked as boolean)
+                          handleCategoryChange(category.value, checked === true)
                         }
                       />
-                      <label
-                        htmlFor={category.value}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                      >
-                        {category.label}
-                      </label>
-                    </div>
+                      <span>{category.label}</span>
+                    </label>
                   ))}
                 </div>
+                {selectedCategories.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {selectedCategories.map((category) => {
+                      const label =
+                        INFLUENCER_CATEGORIES.find((c) => c.value === category)?.label ||
+                        category;
+                      return (
+                        <Badge key={category} variant="secondary">
+                          {label}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -363,13 +449,13 @@ export default function NewInfluencerPage() {
           <CardHeader>
             <CardTitle>프로젝트 배정</CardTitle>
             <CardDescription>
-              함께할 프로젝트를 선택하고 정산 금액과 상태를 입력하세요.
+              참여 중인 프로젝트를 선택하고 정산 상태를 관리하세요.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center">
               <p className="text-sm text-muted-foreground">
-                프로젝트별 정산 금액과 상태를 미리 설정하면 정산 대시보드에 반영됩니다.
+                수정된 정산 현황은 대시보드와 프로젝트 상세 화면에 함께 반영됩니다.
               </p>
               <Button type="button" variant="outline" onClick={addAssignmentRow} size="sm">
                 <PlusCircle className="h-4 w-4 mr-2" /> 추가
@@ -389,12 +475,12 @@ export default function NewInfluencerPage() {
                 {projectAssignments.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
-                      프로젝트를 추가해 주세요.
+                      연결된 프로젝트가 없습니다. 추가해 주세요.
                     </TableCell>
                   </TableRow>
                 ) : (
                   projectAssignments.map((assignment, index) => (
-                    <TableRow key={`${assignment.projectId}-${index}`}>
+                    <TableRow key={`${assignment.projectId || "new"}-${index}`}>
                       <TableCell>
                         <Select
                           value={assignment.projectId}
@@ -417,7 +503,6 @@ export default function NewInfluencerPage() {
                           type="number"
                           value={assignment.fee}
                           onChange={(e) => updateAssignment(index, "fee", e.target.value)}
-                          placeholder="0"
                           min={0}
                         />
                       </TableCell>
@@ -455,18 +540,16 @@ export default function NewInfluencerPage() {
           </CardContent>
         </Card>
 
-        {/* Submit Buttons */}
-        <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">
-          <Button type="button" variant="outline" asChild className="w-full sm:w-auto">
-            <Link href="/influencers">취소</Link>
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="outline" asChild>
+            <Link href={`/influencers/${params.id}`}>취소</Link>
           </Button>
-          <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-            {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            {loading ? "등록 중..." : "인플루언서 등록"}
+          <Button type="submit" disabled={saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            수정 완료
           </Button>
         </div>
       </form>
     </div>
   );
 }
-

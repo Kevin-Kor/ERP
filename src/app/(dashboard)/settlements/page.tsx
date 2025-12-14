@@ -46,7 +46,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
-import { formatCurrency, formatDate, STATUS_LABELS } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
 interface Settlement {
@@ -68,16 +68,47 @@ interface Settlement {
   };
 }
 
+type SettlementStatus = "pending" | "in_progress" | "completed";
+
+interface SettlementSummary {
+  statusTotals: Record<SettlementStatus, { amount: number; count: number }>;
+  influencerTotals: {
+    influencer: { id: string; name: string; instagramId: string | null };
+    totalFee: number;
+    projects: number;
+  }[];
+  projectTotals: {
+    project: { id: string; name: string; client: { id: string; name: string } };
+    totalFee: number;
+    influencers: number;
+  }[];
+}
+
 export default function SettlementsPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<SettlementSummary | null>(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const normalizeStatus = (status: string): SettlementStatus => {
+    const value = (status || "").toLowerCase();
+    if (value === "completed") return "completed";
+    if (value === "in_progress" || value === "requested") return "in_progress";
+    return "pending";
+  };
+
+  const statusOptions: { value: SettlementStatus; label: string }[] = [
+    { value: "pending", label: "예정" },
+    { value: "in_progress", label: "진행 중" },
+    { value: "completed", label: "완료" },
+  ];
+
   useEffect(() => {
     fetchSettlements();
+    fetchSummary();
   }, [statusFilter]);
 
   async function fetchSettlements() {
@@ -96,19 +127,30 @@ export default function SettlementsPage() {
     }
   }
 
-  async function handleStatusChange(id: string, newStatus: string) {
+  async function fetchSummary() {
+    try {
+      const res = await fetch("/api/settlements/summary");
+      const data = await res.json();
+      setSummary(data);
+    } catch (error) {
+      console.error("Failed to fetch settlement summary:", error);
+    }
+  }
+
+  async function handleStatusChange(id: string, newStatus: SettlementStatus) {
     try {
       const res = await fetch(`/api/settlements/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentStatus: newStatus,
-          paymentDate: newStatus === "COMPLETED" ? new Date().toISOString() : null,
+          paymentDate: newStatus === "completed" ? new Date().toISOString() : null,
         }),
       });
 
       if (res.ok) {
         fetchSettlements();
+        fetchSummary();
       }
     } catch (error) {
       console.error("Failed to update settlement:", error);
@@ -145,27 +187,28 @@ export default function SettlementsPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const config: Record<string, { variant: "success" | "warning" | "info"; icon: React.ReactNode }> = {
-      COMPLETED: { variant: "success", icon: <CheckCircle2 className="h-3 w-3" /> },
-      REQUESTED: { variant: "info", icon: <Clock className="h-3 w-3" /> },
-      PENDING: { variant: "warning", icon: <AlertCircle className="h-3 w-3" /> },
+    const normalized = normalizeStatus(status);
+    const config: Record<SettlementStatus, { variant: "success" | "warning" | "info"; icon: React.ReactNode; label: string }> = {
+      completed: { variant: "success", icon: <CheckCircle2 className="h-3 w-3" />, label: "완료" },
+      in_progress: { variant: "info", icon: <Clock className="h-3 w-3" />, label: "진행 중" },
+      pending: { variant: "warning", icon: <AlertCircle className="h-3 w-3" />, label: "예정" },
     };
-    const { variant, icon } = config[status] || { variant: "warning" as const, icon: null };
+    const { variant, icon, label } = config[normalized];
 
     return (
       <Badge variant={variant} className="gap-1">
         {icon}
-        {STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status}
+        {label}
       </Badge>
     );
   };
 
   const pendingAmount = settlements
-    .filter((s) => s.paymentStatus !== "COMPLETED")
+    .filter((s) => normalizeStatus(s.paymentStatus) !== "completed")
     .reduce((sum, s) => sum + s.fee, 0);
 
   const completedAmount = settlements
-    .filter((s) => s.paymentStatus === "COMPLETED")
+    .filter((s) => normalizeStatus(s.paymentStatus) === "completed")
     .reduce((sum, s) => sum + s.fee, 0);
 
   return (
@@ -226,14 +269,133 @@ export default function SettlementsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="PENDING">대기</SelectItem>
-                <SelectItem value="REQUESTED">요청됨</SelectItem>
-                <SelectItem value="COMPLETED">완료</SelectItem>
+                <SelectItem value="pending">예정</SelectItem>
+                <SelectItem value="in_progress">진행 중</SelectItem>
+                <SelectItem value="completed">완료</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
+
+      {summary && (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            {statusOptions.map((option) => (
+              <Card key={option.value}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {option.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold flex items-center gap-2">
+                    <Badge variant="outline" className="rounded-full">
+                      {summary.statusTotals[option.value].count}건
+                    </Badge>
+                    <span className="text-primary">
+                      {formatCurrency(summary.statusTotals[option.value].amount)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>인플루언서별 정산 합계</CardTitle>
+                <CardDescription>인플루언서별 누적 정산 금액과 참여 건수</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {summary.influencerTotals.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">집계할 데이터가 없습니다.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>인플루언서</TableHead>
+                        <TableHead className="text-right">총 정산액</TableHead>
+                        <TableHead className="text-right">참여 프로젝트</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summary.influencerTotals.map((item) => (
+                        <TableRow key={item.influencer.id}>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <Link href={`/influencers/${item.influencer.id}`} className="font-medium hover:text-primary">
+                                {item.influencer.name}
+                              </Link>
+                              {item.influencer.instagramId && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Instagram className="h-3 w-3" />
+                                  {item.influencer.instagramId}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(item.totalFee)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {item.projects}건
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>프로젝트별 정산 합계</CardTitle>
+                <CardDescription>프로젝트 단위 정산 금액과 참여 인플루언서 수</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {summary.projectTotals.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">집계할 데이터가 없습니다.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>프로젝트</TableHead>
+                        <TableHead className="text-right">정산 합계</TableHead>
+                        <TableHead className="text-right">인플루언서</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summary.projectTotals.map((item) => (
+                        <TableRow key={item.project.id}>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <Link href={`/projects/${item.project.id}`} className="font-medium hover:text-primary">
+                                {item.project.name}
+                              </Link>
+                              <span className="text-xs text-muted-foreground">
+                                {item.project.client?.name || "클라이언트 미지정"}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {formatCurrency(item.totalFee)}
+                          </TableCell>
+                          <TableCell className="text-right text-sm text-muted-foreground">
+                            {item.influencers}명
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* Settlement List */}
       <Card>
@@ -293,7 +455,7 @@ export default function SettlementsPage() {
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {settlement.project.client.name}
+                      {settlement.project.client?.name || "클라이언트 미지정"}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {formatCurrency(settlement.fee)}
@@ -316,25 +478,16 @@ export default function SettlementsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {settlement.paymentStatus !== "COMPLETED" && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleStatusChange(
-                                    settlement.id,
-                                    settlement.paymentStatus === "PENDING"
-                                      ? "REQUESTED"
-                                      : "COMPLETED"
-                                  )
-                                }
-                              >
-                                {settlement.paymentStatus === "PENDING"
-                                  ? "정산 요청"
-                                  : "정산 완료"}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                            </>
-                          )}
+                          {statusOptions.map((option) => (
+                            <DropdownMenuItem
+                              key={option.value}
+                              onClick={() => handleStatusChange(settlement.id, option.value)}
+                              disabled={normalizeStatus(settlement.paymentStatus) === option.value}
+                            >
+                              {option.label}로 변경
+                            </DropdownMenuItem>
+                          ))}
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => openDeleteDialog(settlement.id)}
                             className="text-destructive"
