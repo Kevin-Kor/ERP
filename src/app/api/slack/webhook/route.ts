@@ -10,6 +10,16 @@ const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
 const processedEvents = new Set<string>();
 const EVENT_CACHE_TTL = 60000; // 60초
 
+// 대화 맥락 저장 (follow_up 기능용)
+interface ConversationContext {
+  lastIntent: string;
+  lastData: Record<string, unknown>;
+  lastResult: Record<string, unknown>;
+  timestamp: number;
+}
+const conversationContexts = new Map<string, ConversationContext>();
+const CONTEXT_TTL = 300000; // 5분
+
 function isEventProcessed(eventId: string): boolean {
   if (processedEvents.has(eventId)) {
     return true;
@@ -53,6 +63,14 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
       return await handleQuerySpending(data);
     case "query_influencer":
       return await handleQueryInfluencer(data);
+    case "query_schedule":
+      return await handleQuerySchedule(data);
+    case "update_status":
+      return await handleUpdateStatus(data);
+    case "smart_search":
+      return await handleSmartSearch(data);
+    case "follow_up":
+      return await handleFollowUp(data, SLACK_CHANNEL_ID);
     case "generate_report":
       return await handleGenerateReport(data);
     default:
@@ -68,7 +86,12 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
           "- 클라이언트: \"ABC 회사 정산 현황\"\n" +
           "- 프로젝트: \"진행중인 프로젝트\"\n" +
           "- 정산: \"정산 대기 목록\"\n" +
-          "- 지출: \"이번달 지출 분석\"\n\n" +
+          "- 지출: \"이번달 지출 분석\"\n" +
+          "- 일정: \"이번주 마감 일정\"\n\n" +
+          "✏️ *업데이트*\n" +
+          "- \"ABC 프로젝트 완료 처리해줘\"\n\n" +
+          "🔎 *검색*\n" +
+          "- \"뷰티 캠페인 찾아줘\"\n\n" +
           "📊 *리포트*\n" +
           "- \"주간 리포트 보내줘\"",
       };
@@ -631,34 +654,544 @@ async function handleQueryInfluencer(data: Record<string, unknown>) {
   }
 }
 
-// 리포트 생성
+// 일정/마감 조회
+async function handleQuerySchedule(data: Record<string, unknown>) {
+  try {
+    const period = (data.period as string) || "this_week";
+    const type = (data.type as string) || "all";
+
+    const now = new Date();
+    // KST 기준으로 날짜 계산
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel: string;
+
+    switch (period) {
+      case "today":
+        startDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate());
+        endDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate(), 23, 59, 59);
+        periodLabel = "오늘";
+        break;
+      case "tomorrow":
+        startDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate() + 1);
+        endDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), kstNow.getDate() + 1, 23, 59, 59);
+        periodLabel = "내일";
+        break;
+      case "next_week":
+        const nextMonday = new Date(kstNow);
+        nextMonday.setDate(kstNow.getDate() + (8 - kstNow.getDay()) % 7);
+        startDate = new Date(nextMonday.getFullYear(), nextMonday.getMonth(), nextMonday.getDate());
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59);
+        periodLabel = "다음주";
+        break;
+      case "this_month":
+        startDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), 1);
+        endDate = new Date(kstNow.getFullYear(), kstNow.getMonth() + 1, 0, 23, 59, 59);
+        periodLabel = "이번달";
+        break;
+      default: // this_week
+        const day = kstNow.getDay();
+        const diff = kstNow.getDate() - day + (day === 0 ? -6 : 1);
+        startDate = new Date(kstNow.getFullYear(), kstNow.getMonth(), diff);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59);
+        periodLabel = "이번주";
+    }
+
+    // 캘린더 이벤트 조회
+    const calendarWhere: Record<string, unknown> = {
+      date: { gte: startDate, lte: endDate },
+    };
+    if (type === "meeting") {
+      calendarWhere.type = "MEETING";
+    }
+
+    const calendarEvents = await prisma.calendarEvent.findMany({
+      where: calendarWhere,
+      orderBy: { date: "asc" },
+    });
+
+    // 프로젝트 마감 조회 (deadline)
+    const projects = type === "meeting" ? [] : await prisma.project.findMany({
+      where: {
+        endDate: { gte: startDate, lte: endDate },
+        status: { in: ["IN_PROGRESS", "QUOTING"] },
+      },
+      include: {
+        Client: { select: { name: true } },
+      },
+      orderBy: { endDate: "asc" },
+    });
+
+    // 정산 마감 조회
+    const settlements = type === "meeting" ? [] : await prisma.projectInfluencer.findMany({
+      where: {
+        paymentDueDate: { gte: startDate, lte: endDate },
+        paymentStatus: { in: ["PENDING", "REQUESTED"] },
+      },
+      include: {
+        Influencer: { select: { name: true } },
+        Project: { select: { name: true } },
+      },
+      orderBy: { paymentDueDate: "asc" },
+    });
+
+    const typeLabels: Record<string, string> = {
+      MEETING: "미팅",
+      DEADLINE: "마감",
+      PAYMENT: "정산",
+      OTHER: "기타",
+    };
+
+    const events = calendarEvents.map((e) => ({
+      type: "calendar",
+      title: e.title,
+      date: e.date.toLocaleDateString("ko-KR"),
+      category: typeLabels[e.type] || "기타",
+    }));
+
+    const deadlines = projects.map((p) => ({
+      type: "project_deadline",
+      title: `${p.name} (${p.Client.name})`,
+      date: p.endDate.toLocaleDateString("ko-KR"),
+      category: "프로젝트 마감",
+    }));
+
+    const settlementDueDates = settlements.map((s) => ({
+      type: "settlement",
+      title: `${s.Influencer.name} - ${s.Project.name}`,
+      date: s.paymentDueDate?.toLocaleDateString("ko-KR") || "미정",
+      category: "정산 마감",
+      amount: s.fee,
+    }));
+
+    const allSchedules = [...events, ...deadlines, ...settlementDueDates].sort((a, b) => {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    return {
+      success: true,
+      intent: "query_schedule",
+      data: {
+        period: periodLabel,
+        schedules: allSchedules,
+        count: allSchedules.length,
+        summary: {
+          meetings: events.filter((e) => e.category === "미팅").length,
+          projectDeadlines: deadlines.length,
+          settlementDeadlines: settlementDueDates.length,
+        },
+      },
+    };
+  } catch (error) {
+    console.error("일정 조회 오류:", error);
+    return { success: false, message: "일정 조회에 실패했습니다." };
+  }
+}
+
+// 상태 업데이트
+async function handleUpdateStatus(data: Record<string, unknown>) {
+  try {
+    const targetType = data.targetType as string;
+    const searchTerm = data.searchTerm as string;
+    const newStatus = data.newStatus as string;
+
+    if (targetType === "project") {
+      const project = await prisma.project.findFirst({
+        where: {
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+      });
+
+      if (!project) {
+        return { success: false, message: `"${searchTerm}" 프로젝트를 찾을 수 없습니다.` };
+      }
+
+      const updated = await prisma.project.update({
+        where: { id: project.id },
+        data: { status: newStatus },
+        include: { Client: { select: { name: true } } },
+      });
+
+      const statusLabels: Record<string, string> = {
+        QUOTING: "견적 중",
+        IN_PROGRESS: "진행 중",
+        COMPLETED: "완료",
+        CANCELLED: "취소",
+      };
+
+      return {
+        success: true,
+        intent: "update_status",
+        data: {
+          targetType: "project",
+          name: updated.name,
+          clientName: updated.Client.name,
+          previousStatus: statusLabels[project.status] || project.status,
+          newStatus: statusLabels[newStatus] || newStatus,
+        },
+      };
+    } else if (targetType === "settlement") {
+      const settlement = await prisma.projectInfluencer.findFirst({
+        where: {
+          Influencer: { name: { contains: searchTerm, mode: "insensitive" } },
+          paymentStatus: { in: ["PENDING", "REQUESTED"] },
+        },
+        include: {
+          Influencer: { select: { name: true } },
+          Project: { select: { name: true } },
+        },
+      });
+
+      if (!settlement) {
+        return { success: false, message: `"${searchTerm}" 인플루언서의 미완료 정산을 찾을 수 없습니다.` };
+      }
+
+      const updated = await prisma.projectInfluencer.update({
+        where: { id: settlement.id },
+        data: {
+          paymentStatus: newStatus === "COMPLETED" ? "COMPLETED" : "PENDING",
+          paidAt: newStatus === "COMPLETED" ? new Date() : null,
+        },
+        include: {
+          Influencer: { select: { name: true } },
+          Project: { select: { name: true } },
+        },
+      });
+
+      return {
+        success: true,
+        intent: "update_status",
+        data: {
+          targetType: "settlement",
+          influencerName: updated.Influencer.name,
+          projectName: updated.Project.name,
+          fee: updated.fee,
+          newStatus: newStatus === "COMPLETED" ? "완료" : "대기",
+        },
+      };
+    }
+
+    return { success: false, message: "지원하지 않는 대상 유형입니다." };
+  } catch (error) {
+    console.error("상태 업데이트 오류:", error);
+    return { success: false, message: "상태 업데이트에 실패했습니다." };
+  }
+}
+
+// 통합 검색
+async function handleSmartSearch(data: Record<string, unknown>) {
+  try {
+    const searchTerm = data.searchTerm as string;
+    const searchType = (data.searchType as string) || "all";
+
+    const results: Record<string, unknown[]> = {};
+
+    // 클라이언트 검색
+    if (searchType === "all" || searchType === "client") {
+      const clients = await prisma.client.findMany({
+        where: {
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { contactName: { contains: searchTerm, mode: "insensitive" } },
+            { industry: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        take: 5,
+      });
+      if (clients.length > 0) {
+        results.clients = clients.map((c) => ({
+          name: c.name,
+          contactName: c.contactName,
+          status: c.status,
+        }));
+      }
+    }
+
+    // 프로젝트 검색
+    if (searchType === "all" || searchType === "project") {
+      const projects = await prisma.project.findMany({
+        where: {
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { memo: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        include: { Client: { select: { name: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      });
+      if (projects.length > 0) {
+        const statusLabels: Record<string, string> = {
+          QUOTING: "견적 중",
+          IN_PROGRESS: "진행 중",
+          COMPLETED: "완료",
+          CANCELLED: "취소",
+        };
+        results.projects = projects.map((p) => ({
+          name: p.name,
+          clientName: p.Client.name,
+          status: statusLabels[p.status] || p.status,
+          contractAmount: p.contractAmount,
+        }));
+      }
+    }
+
+    // 인플루언서 검색
+    if (searchType === "all" || searchType === "influencer") {
+      const influencers = await prisma.influencer.findMany({
+        where: {
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { instagramId: { contains: searchTerm, mode: "insensitive" } },
+            { categories: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
+        take: 5,
+      });
+      if (influencers.length > 0) {
+        results.influencers = influencers.map((i) => ({
+          name: i.name,
+          instagramId: i.instagramId || "-",
+          categories: i.categories || "-",
+        }));
+      }
+    }
+
+    // 거래 검색
+    if (searchType === "all" || searchType === "transaction") {
+      const transactions = await prisma.transaction.findMany({
+        where: {
+          memo: { contains: searchTerm, mode: "insensitive" },
+        },
+        orderBy: { date: "desc" },
+        take: 5,
+      });
+      if (transactions.length > 0) {
+        results.transactions = transactions.map((t) => ({
+          type: t.type === "EXPENSE" ? "지출" : "수입",
+          amount: t.amount,
+          memo: t.memo,
+          date: t.date.toLocaleDateString("ko-KR"),
+        }));
+      }
+    }
+
+    const totalResults = Object.values(results).reduce((sum, arr) => sum + arr.length, 0);
+
+    return {
+      success: true,
+      intent: "smart_search",
+      data: {
+        searchTerm,
+        found: totalResults > 0,
+        totalResults,
+        results,
+      },
+    };
+  } catch (error) {
+    console.error("검색 오류:", error);
+    return { success: false, message: "검색에 실패했습니다." };
+  }
+}
+
+// 후속 질문 처리
+async function handleFollowUp(data: Record<string, unknown>, channelId: string) {
+  try {
+    const followUpType = data.followUpType as string;
+    const context = conversationContexts.get(channelId);
+
+    if (!context || Date.now() - context.timestamp > CONTEXT_TTL) {
+      return {
+        success: false,
+        message: "이전 대화 내용이 없습니다. 새로운 질문을 해주세요.",
+      };
+    }
+
+    // 이전 인텐트에 따라 후속 처리
+    if (followUpType === "detail") {
+      // 더 자세한 정보 제공
+      return {
+        success: true,
+        intent: "follow_up",
+        data: {
+          type: "detail",
+          originalIntent: context.lastIntent,
+          originalData: context.lastData,
+          detailedResult: context.lastResult,
+        },
+      };
+    } else if (followUpType === "compare") {
+      // 비교 데이터 (예: 지난달)
+      const compareContext = data.context as string;
+      if (context.lastIntent === "query_spending" || context.lastIntent === "query_dashboard") {
+        // 지난달 데이터로 재조회
+        const newData = { ...context.lastData, period: "last_month" };
+        if (context.lastIntent === "query_spending") {
+          return await handleQuerySpending(newData);
+        }
+      }
+      return {
+        success: true,
+        intent: "follow_up",
+        data: {
+          type: "compare",
+          context: compareContext,
+          message: "비교 데이터를 조회했습니다.",
+        },
+      };
+    }
+
+    return {
+      success: true,
+      intent: "follow_up",
+      data: {
+        type: followUpType,
+        message: "추가 정보입니다.",
+        originalContext: context,
+      },
+    };
+  } catch (error) {
+    console.error("후속 질문 처리 오류:", error);
+    return { success: false, message: "후속 질문 처리에 실패했습니다." };
+  }
+}
+
+// 대화 맥락 저장
+function saveConversationContext(
+  channelId: string,
+  intent: string,
+  data: Record<string, unknown>,
+  result: Record<string, unknown>
+) {
+  conversationContexts.set(channelId, {
+    lastIntent: intent,
+    lastData: data,
+    lastResult: result,
+    timestamp: Date.now(),
+  });
+
+  // TTL 후 자동 삭제
+  setTimeout(() => {
+    const ctx = conversationContexts.get(channelId);
+    if (ctx && Date.now() - ctx.timestamp >= CONTEXT_TTL) {
+      conversationContexts.delete(channelId);
+    }
+  }, CONTEXT_TTL);
+}
+
+// 리포트 생성 (직접 생성)
 async function handleGenerateReport(data: Record<string, unknown>) {
   try {
     const reportType = (data.reportType as string) || "weekly";
-    const baseUrl = process.env.NEXTAUTH_URL || process.env.VERCEL_URL || "http://localhost:3000";
 
-    // 내부 API 호출로 리포트 생성
-    const endpoint = reportType === "monthly"
-      ? `${baseUrl}/api/cron/monthly-report`
-      : `${baseUrl}/api/cron/weekly-report`;
+    // 직접 리포트 데이터 생성
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel: string;
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.CRON_SECRET || "dev"}`,
+    if (reportType === "monthly") {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      periodLabel = `${now.getMonth() + 1}월`;
+    } else {
+      // weekly
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      startDate = new Date(now.getFullYear(), now.getMonth(), diff);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+      periodLabel = "이번주";
+    }
+
+    // 거래 데이터 조회
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
       },
     });
 
-    if (!response.ok) {
-      throw new Error(`리포트 생성 실패: ${response.status}`);
-    }
+    const revenue = transactions
+      .filter((t) => t.type === "REVENUE")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expense = transactions
+      .filter((t) => t.type === "EXPENSE")
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    // 프로젝트 현황
+    const projects = await prisma.project.findMany({
+      where: {
+        OR: [
+          { status: "IN_PROGRESS" },
+          { endDate: { gte: startDate, lte: endDate } },
+        ],
+      },
+      include: { Client: { select: { name: true } } },
+    });
+
+    // 정산 대기
+    const pendingSettlements = await prisma.projectInfluencer.findMany({
+      where: {
+        paymentStatus: { in: ["PENDING", "REQUESTED"] },
+      },
+      include: {
+        Influencer: { select: { name: true } },
+        Project: { select: { name: true } },
+      },
+    });
+
+    const pendingAmount = pendingSettlements.reduce((sum, s) => sum + s.fee, 0);
+
+    // 지출 카테고리별
+    const expenseByCategory = transactions
+      .filter((t) => t.type === "EXPENSE")
+      .reduce((acc, t) => {
+        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        return acc;
+      }, {} as Record<string, number>);
+
+    const categoryLabels: Record<string, string> = {
+      FOOD: "식비",
+      TRANSPORTATION: "교통비",
+      SUPPLIES: "사무용품",
+      AD_EXPENSE: "광고비",
+      INFLUENCER_FEE: "인플루언서",
+      CONTENT_PRODUCTION: "콘텐츠 제작",
+      OTHER_EXPENSE: "기타",
+    };
+
+    const topExpenses = Object.entries(expenseByCategory)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([cat, amount]) => ({
+        category: categoryLabels[cat] || cat,
+        amount,
+      }));
 
     return {
       success: true,
       intent: "generate_report",
       data: {
         reportType,
+        period: periodLabel,
         generated: true,
+        summary: {
+          revenue,
+          expense,
+          profit: revenue - expense,
+          projectsInProgress: projects.filter((p) => p.status === "IN_PROGRESS").length,
+          pendingSettlements: pendingSettlements.length,
+          pendingSettlementAmount: pendingAmount,
+          topExpenses,
+        },
       },
     };
   } catch (error) {
@@ -754,6 +1287,14 @@ export async function POST(request: NextRequest) {
         if (result.success) {
           const message = formatSuccessMessage(result.intent!, result.data!);
           await sendSlackMessage(SLACK_CHANNEL_ID, message);
+
+          // 대화 맥락 저장 (follow_up 기능용)
+          saveConversationContext(
+            SLACK_CHANNEL_ID,
+            result.intent!,
+            parsed.data,
+            result.data as Record<string, unknown>
+          );
         } else {
           await sendSlackMessage(SLACK_CHANNEL_ID, formatErrorMessage(result.message!));
         }

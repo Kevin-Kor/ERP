@@ -181,9 +181,127 @@ export function formatSuccessMessage(intent: string, data: Record<string, unknow
       return msg.trim();
     },
 
+    query_schedule: (d) => {
+      const schedules = d.schedules as Array<Record<string, unknown>>;
+      const summary = d.summary as Record<string, number>;
+
+      if (schedules.length === 0) {
+        return `📅 *${d.period} 일정*\n등록된 일정이 없습니다.`;
+      }
+
+      let msg = `📅 *${d.period} 일정* (총 ${d.count}건)\n`;
+      msg += `• 미팅: ${summary.meetings}건 | 프로젝트 마감: ${summary.projectDeadlines}건 | 정산 마감: ${summary.settlementDeadlines}건\n\n`;
+
+      schedules.slice(0, 10).forEach((s, i) => {
+        const icon = s.category === "미팅" ? "🤝" :
+          s.category === "프로젝트 마감" ? "📁" :
+          s.category === "정산 마감" ? "💰" : "📌";
+        msg += `${icon} *${s.date}* - ${s.title}\n`;
+        if (s.amount) {
+          msg += `   └ ${formatAmountHelper(Number(s.amount))}\n`;
+        }
+      });
+
+      if (schedules.length > 10) {
+        msg += `\n_...외 ${schedules.length - 10}건 더 있음_`;
+      }
+      return msg.trim();
+    },
+
+    update_status: (d) => {
+      if (d.targetType === "project") {
+        return `✅ *프로젝트 상태 업데이트*\n` +
+          `• 프로젝트: ${d.name}\n` +
+          `• 클라이언트: ${d.clientName}\n` +
+          `• 상태: ${d.previousStatus} → *${d.newStatus}*`;
+      } else if (d.targetType === "settlement") {
+        return `✅ *정산 상태 업데이트*\n` +
+          `• 인플루언서: ${d.influencerName}\n` +
+          `• 프로젝트: ${d.projectName}\n` +
+          `• 금액: ${formatAmountHelper(Number(d.fee))}\n` +
+          `• 상태: *${d.newStatus}*`;
+      }
+      return `✅ 상태가 업데이트되었습니다.`;
+    },
+
+    smart_search: (d) => {
+      if (!d.found) {
+        return `🔍 "${d.searchTerm}" 검색 결과가 없습니다.`;
+      }
+
+      const results = d.results as Record<string, unknown[]>;
+      let msg = `🔍 *"${d.searchTerm}" 검색 결과* (${d.totalResults}건)\n\n`;
+
+      if (results.clients) {
+        msg += `*🏢 클라이언트* (${results.clients.length}건)\n`;
+        results.clients.forEach((c: Record<string, unknown>) => {
+          msg += `• ${c.name} (${c.contactName}) - ${c.status === "ACTIVE" ? "활성" : c.status}\n`;
+        });
+        msg += `\n`;
+      }
+
+      if (results.projects) {
+        msg += `*📁 프로젝트* (${results.projects.length}건)\n`;
+        results.projects.forEach((p: Record<string, unknown>) => {
+          msg += `• ${p.name} (${p.clientName}) - ${p.status}\n`;
+        });
+        msg += `\n`;
+      }
+
+      if (results.influencers) {
+        msg += `*👤 인플루언서* (${results.influencers.length}건)\n`;
+        results.influencers.forEach((i: Record<string, unknown>) => {
+          msg += `• ${i.name} ${i.instagramId !== "-" ? `(@${i.instagramId})` : ""}\n`;
+        });
+        msg += `\n`;
+      }
+
+      if (results.transactions) {
+        msg += `*💰 거래* (${results.transactions.length}건)\n`;
+        results.transactions.forEach((t: Record<string, unknown>) => {
+          msg += `• ${t.date} ${t.type} ${formatAmountHelper(Number(t.amount))} - ${t.memo}\n`;
+        });
+      }
+
+      return msg.trim();
+    },
+
+    follow_up: (d) => {
+      if (d.type === "detail") {
+        return `📝 *상세 정보*\n이전 조회: ${d.originalIntent}\n\n자세한 내용은 위 결과를 참고해주세요.`;
+      } else if (d.type === "compare") {
+        return `📊 *비교 데이터*\n${d.context || "지난 기간"} 데이터입니다.`;
+      }
+      return `ℹ️ 추가 정보입니다.`;
+    },
+
     generate_report: (d) => {
       const typeLabel = d.reportType === "monthly" ? "월간" : "주간";
-      return `📊 *${typeLabel} 리포트가 생성되었습니다.*\n위 메시지를 확인해주세요.`;
+      const summary = d.summary as Record<string, unknown>;
+
+      if (!summary) {
+        return `📊 *${typeLabel} 리포트가 생성되었습니다.*`;
+      }
+
+      let msg = `📊 *${d.period} ${typeLabel} 리포트*\n\n`;
+      msg += `*💰 재무 요약*\n`;
+      msg += `• 매출: ${formatAmountHelper(Number(summary.revenue))}\n`;
+      msg += `• 지출: ${formatAmountHelper(Number(summary.expense))}\n`;
+      msg += `• 순이익: ${formatAmountHelper(Number(summary.profit))}\n\n`;
+
+      msg += `*📁 현황*\n`;
+      msg += `• 진행 중 프로젝트: ${summary.projectsInProgress}건\n`;
+      msg += `• 정산 대기: ${summary.pendingSettlements}건 (${formatAmountHelper(Number(summary.pendingSettlementAmount))})\n\n`;
+
+      const topExpenses = summary.topExpenses as Array<Record<string, unknown>>;
+      if (topExpenses && topExpenses.length > 0) {
+        msg += `*📉 지출 TOP 3*\n`;
+        topExpenses.forEach((e, i) => {
+          msg += `${i + 1}. ${e.category}: ${formatAmountHelper(Number(e.amount))}\n`;
+        });
+      }
+
+      return msg.trim();
     },
 
     unknown: () => "✅ 요청을 처리했습니다.",
