@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,47 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Loader2, Instagram, Youtube, Globe } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Instagram,
+  Youtube,
+  Globe,
+  PlusCircle,
+  Trash2,
+} from "lucide-react";
 import { INFLUENCER_CATEGORIES } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+type SettlementStatus = "pending" | "in_progress" | "completed";
+
+interface ProjectOption {
+  id: string;
+  name: string;
+}
 
 export default function NewInfluencerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [projectAssignments, setProjectAssignments] = useState<
+    { projectId: string; fee: string; paymentStatus: SettlementStatus }[]
+  >([{ projectId: "", fee: "", paymentStatus: "pending" }]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -34,6 +68,25 @@ export default function NewInfluencerPage() {
     priceRange: "",
     memo: "",
   });
+
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        const data = await res.json();
+        setProjectOptions(
+          (data.projects || []).map((project: any) => ({
+            id: project.id,
+            name: project.name,
+          }))
+        );
+      } catch (error) {
+        console.error("Failed to load projects", error);
+      }
+    }
+
+    fetchProjects();
+  }, []);
 
   const handleCategoryChange = (category: string, checked: boolean) => {
     if (checked) {
@@ -63,6 +116,13 @@ export default function NewInfluencerPage() {
             ? parseInt(formData.followerCount)
             : null,
           categories: selectedCategories.join(",") || null,
+          projectAssignments: projectAssignments
+            .filter((assignment) => assignment.projectId)
+            .map((assignment) => ({
+              projectId: assignment.projectId,
+              fee: assignment.fee ? Number(assignment.fee) : 0,
+              paymentStatus: assignment.paymentStatus,
+            })),
         }),
       });
 
@@ -82,6 +142,29 @@ export default function NewInfluencerPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateAssignment = (
+    index: number,
+    field: "projectId" | "fee" | "paymentStatus",
+    value: string
+  ) => {
+    setProjectAssignments((prev) =>
+      prev.map((assignment, i) =>
+        i === index ? { ...assignment, [field]: value } : assignment
+      )
+    );
+  };
+
+  const addAssignmentRow = () => {
+    setProjectAssignments((prev) => [
+      ...prev,
+      { projectId: "", fee: "", paymentStatus: "pending" },
+    ]);
+  };
+
+  const removeAssignmentRow = (index: number) => {
+    setProjectAssignments((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -274,6 +357,103 @@ export default function NewInfluencerPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* 프로젝트 및 정산 */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>프로젝트 배정</CardTitle>
+            <CardDescription>
+              함께할 프로젝트를 선택하고 정산 금액과 상태를 입력하세요.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-muted-foreground">
+                프로젝트별 정산 금액과 상태를 미리 설정하면 정산 대시보드에 반영됩니다.
+              </p>
+              <Button type="button" variant="outline" onClick={addAssignmentRow} size="sm">
+                <PlusCircle className="h-4 w-4 mr-2" /> 추가
+              </Button>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>프로젝트</TableHead>
+                  <TableHead>정산 금액</TableHead>
+                  <TableHead>정산 상태</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projectAssignments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
+                      프로젝트를 추가해 주세요.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  projectAssignments.map((assignment, index) => (
+                    <TableRow key={`${assignment.projectId}-${index}`}>
+                      <TableCell>
+                        <Select
+                          value={assignment.projectId}
+                          onValueChange={(value) => updateAssignment(index, "projectId", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="프로젝트 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projectOptions.map((project) => (
+                              <SelectItem key={project.id} value={project.id}>
+                                {project.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={assignment.fee}
+                          onChange={(e) => updateAssignment(index, "fee", e.target.value)}
+                          placeholder="0"
+                          min={0}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={assignment.paymentStatus}
+                          onValueChange={(value) => updateAssignment(index, "paymentStatus", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">예정</SelectItem>
+                            <SelectItem value="in_progress">진행 중</SelectItem>
+                            <SelectItem value="completed">완료</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => removeAssignmentRow(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         {/* Submit Buttons */}
         <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-6">

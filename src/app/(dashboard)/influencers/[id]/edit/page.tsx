@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Globe, Instagram, Loader2, Youtube } from "lucide-react";
-
+import { ArrowLeft, Globe, Instagram, Loader2, PlusCircle, Trash2, Youtube } from "lucide-react";
 import { INFLUENCER_CATEGORIES } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface InfluencerResponse {
   id: string;
@@ -32,6 +46,28 @@ interface InfluencerResponse {
   bankAccount: string | null;
   priceRange: string | null;
   memo: string | null;
+  projectInfluencers?: Array<{
+    id: string;
+    project: { id: string; name: string };
+    fee: number;
+    paymentStatus: string;
+  }>;
+}
+
+type SettlementStatus = "pending" | "in_progress" | "completed";
+
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+const normalizeStatus = (status?: string): SettlementStatus => {
+  const value = (status || "").toLowerCase();
+  if (value === "completed") return "completed";
+  if (value === "in_progress" || value === "requested") return "in_progress";
+  return "pending";
+};
+
 }
 
 export default function EditInfluencerPage() {
@@ -41,6 +77,10 @@ export default function EditInfluencerPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
+  const [projectAssignments, setProjectAssignments] = useState<
+    { projectId: string; fee: string; paymentStatus: SettlementStatus }[]
+  >([]);
   const [formData, setFormData] = useState({
     name: "",
     instagramId: "",
@@ -76,6 +116,13 @@ export default function EditInfluencerPage() {
           memo: data.memo || "",
         });
         setSelectedCategories(data.categories ? data.categories.split(",") : []);
+        setProjectAssignments(
+          (data.projectInfluencers || []).map((pi) => ({
+            projectId: pi.project.id,
+            fee: String(pi.fee ?? ""),
+            paymentStatus: normalizeStatus(pi.paymentStatus),
+          }))
+        );
       } catch (error) {
         console.error(error);
         alert("인플루언서를 불러오지 못했습니다. 목록으로 돌아갑니다.");
@@ -88,12 +135,61 @@ export default function EditInfluencerPage() {
     fetchInfluencer();
   }, [params.id, router]);
 
+  useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        if (!res.ok) {
+          throw new Error("Failed to load projects");
+        }
+
+        const data = await res.json();
+        const options = (data.projects || [])
+          .map((project: any) => ({
+            id: project.id,
+            name: project.name,
+          }))
+          .sort((a: ProjectOption, b: ProjectOption) => a.name.localeCompare(b.name));
+
+        setProjectOptions(options);
+      } catch (error) {
+        console.error("Failed to load projects", error);
+        setProjectOptions([]);
+      }
+    }
+
+    fetchProjects();
+  }, []);
+
   const handleCategoryChange = (category: string, checked: boolean) => {
     if (checked) {
       setSelectedCategories((prev) => [...prev, category]);
     } else {
       setSelectedCategories((prev) => prev.filter((c) => c !== category));
     }
+  };
+
+  const updateAssignment = (
+    index: number,
+    field: "projectId" | "fee" | "paymentStatus",
+    value: string
+  ) => {
+    setProjectAssignments((prev) =>
+      prev.map((assignment, i) =>
+        i === index ? { ...assignment, [field]: value } : assignment
+      )
+    );
+  };
+
+  const addAssignmentRow = () => {
+    setProjectAssignments((prev) => [
+      ...prev,
+      { projectId: "", fee: "", paymentStatus: "pending" },
+    ]);
+  };
+
+  const removeAssignmentRow = (index: number) => {
+    setProjectAssignments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,6 +212,16 @@ export default function EditInfluencerPage() {
             ? parseInt(formData.followerCount)
             : null,
           categories: selectedCategories.join(",") || null,
+          projectAssignments: projectAssignments
+            .filter((assignment) => assignment.projectId)
+            .map((assignment) => {
+              const feeNumber = Number(assignment.fee);
+              return {
+                projectId: assignment.projectId,
+                fee: Number.isFinite(feeNumber) && feeNumber > 0 ? feeNumber : 0,
+                paymentStatus: assignment.paymentStatus,
+              };
+            }),
         }),
       });
 
@@ -334,6 +440,102 @@ export default function EditInfluencerPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* 프로젝트 및 정산 */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>프로젝트 배정</CardTitle>
+            <CardDescription>
+              참여 중인 프로젝트를 선택하고 정산 상태를 관리하세요.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-muted-foreground">
+                수정된 정산 현황은 대시보드와 프로젝트 상세 화면에 함께 반영됩니다.
+              </p>
+              <Button type="button" variant="outline" onClick={addAssignmentRow} size="sm">
+                <PlusCircle className="h-4 w-4 mr-2" /> 추가
+              </Button>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>프로젝트</TableHead>
+                  <TableHead>정산 금액</TableHead>
+                  <TableHead>정산 상태</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projectAssignments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-sm text-muted-foreground text-center">
+                      연결된 프로젝트가 없습니다. 추가해 주세요.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  projectAssignments.map((assignment, index) => (
+                    <TableRow key={`${assignment.projectId || "new"}-${index}`}>
+                      <TableCell>
+                        <Select
+                          value={assignment.projectId}
+                          onValueChange={(value) => updateAssignment(index, "projectId", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="프로젝트 선택" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {projectOptions.map((project) => (
+                              <SelectItem key={project.id} value={project.id}>
+                                {project.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          value={assignment.fee}
+                          onChange={(e) => updateAssignment(index, "fee", e.target.value)}
+                          min={0}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={assignment.paymentStatus}
+                          onValueChange={(value) => updateAssignment(index, "paymentStatus", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">예정</SelectItem>
+                            <SelectItem value="in_progress">진행 중</SelectItem>
+                            <SelectItem value="completed">완료</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive"
+                          onClick={() => removeAssignmentRow(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" asChild>
