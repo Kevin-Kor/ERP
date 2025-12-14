@@ -3,28 +3,9 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +33,6 @@ import {
   TrendingUp,
   TrendingDown,
   DollarSign,
-  Plus,
   ArrowUpRight,
   ArrowDownRight,
   FileSpreadsheet,
@@ -69,7 +49,12 @@ import {
   Pencil,
 } from "lucide-react";
 import Link from "next/link";
-import { formatCurrency, formatDate, REVENUE_CATEGORIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS } from "@/lib/utils";
+import {
+  formatCurrency,
+  REVENUE_CATEGORIES,
+  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_GROUPS,
+} from "@/lib/utils";
 
 interface Transaction {
   id: string;
@@ -101,7 +86,8 @@ interface SettlementSummary {
     projects: number;
   }[];
   projectTotals: {
-    project: { id: string; name: string; client: { id: string; name: string } };
+    // ✅ conflict 해결: client null-safe
+    project: { id: string; name: string; client: { id: string; name: string } | null };
     totalFee: number;
     influencers: number;
   }[];
@@ -214,6 +200,7 @@ export default function FinancePage() {
   useEffect(() => {
     fetchTransactions();
     fetchFixedVendors();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
 
   useEffect(() => {
@@ -260,17 +247,17 @@ export default function FinancePage() {
   // 고정업체 선택 시 금액 자동 입력
   const handleVendorSelect = (vendorId: string) => {
     setSelectedVendor(vendorId);
-    const vendor = fixedVendors.find(v => v.id === vendorId);
+    const vendor = fixedVendors.find((v) => v.id === vendorId);
     if (vendor && vendor.monthlyFee && !newRevenueForm.isManualAmount) {
       const amountInMan = (vendor.monthlyFee / 10000).toString();
-      setNewRevenueForm(prev => ({
+      setNewRevenueForm((prev) => ({
         ...prev,
         clientId: vendorId,
         amount: vendor.monthlyFee || 0,
         amountInMan,
       }));
     } else {
-      setNewRevenueForm(prev => ({
+      setNewRevenueForm((prev) => ({
         ...prev,
         clientId: vendorId,
       }));
@@ -369,33 +356,40 @@ export default function FinancePage() {
   };
 
   // 수입 거래
-  const revenueTransactions = useMemo(() =>
-    transactions.filter((t) => t.type === "REVENUE"),
-  [transactions]);
+  const revenueTransactions = useMemo(
+    () => transactions.filter((t) => t.type === "REVENUE"),
+    [transactions]
+  );
 
   // 지출 거래
-  const expenseTransactions = useMemo(() =>
-    transactions.filter((t) => t.type === "EXPENSE"),
-  [transactions]);
+  const expenseTransactions = useMemo(
+    () => transactions.filter((t) => t.type === "EXPENSE"),
+    [transactions]
+  );
 
   // 필터된 수입 거래
-  const filteredRevenueTransactions = useMemo(() =>
-    selectedRevenueCategory
-      ? revenueTransactions.filter((t) => t.category === selectedRevenueCategory)
-      : revenueTransactions,
-  [revenueTransactions, selectedRevenueCategory]);
+  const filteredRevenueTransactions = useMemo(
+    () =>
+      selectedRevenueCategory
+        ? revenueTransactions.filter((t) => t.category === selectedRevenueCategory)
+        : revenueTransactions,
+    [revenueTransactions, selectedRevenueCategory]
+  );
 
   // 필터된 지출 거래
-  const filteredExpenseTransactions = useMemo(() =>
-    selectedExpenseCategory
-      ? expenseTransactions.filter((t) => t.category === selectedExpenseCategory)
-      : expenseTransactions,
-  [expenseTransactions, selectedExpenseCategory]);
+  const filteredExpenseTransactions = useMemo(
+    () =>
+      selectedExpenseCategory
+        ? expenseTransactions.filter((t) => t.category === selectedExpenseCategory)
+        : expenseTransactions,
+    [expenseTransactions, selectedExpenseCategory]
+  );
 
   // 미수금 (대기 상태인 수입)
-  const receivables = useMemo(() =>
-    transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus === "PENDING"),
-  [transactions]);
+  const receivables = useMemo(
+    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus === "PENDING"),
+    [transactions]
+  );
 
   const totalReceivables = receivables.reduce((sum, t) => sum + t.amount, 0);
 
@@ -533,7 +527,13 @@ export default function FinancePage() {
   };
 
   // 거래 테이블 렌더링 컴포넌트
-  const TransactionTable = ({ items, type }: { items: Transaction[]; type: "REVENUE" | "EXPENSE" }) => (
+  const TransactionTable = ({
+    items,
+    type,
+  }: {
+    items: Transaction[];
+    type: "REVENUE" | "EXPENSE";
+  }) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -548,21 +548,20 @@ export default function FinancePage() {
       <TableBody>
         {items.map((tx) => (
           <TableRow key={tx.id} className="group">
-            <TableCell className="text-muted-foreground text-sm">
-              {new Date(tx.date).getDate()}일
-            </TableCell>
+            <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
             <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
             <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
               {tx.memo || tx.client?.name || tx.project?.name || "-"}
             </TableCell>
-            <TableCell className={`text-right font-medium ${type === "REVENUE" ? "text-emerald-600" : "text-red-600"}`}>
+            <TableCell
+              className={`text-right font-medium ${
+                type === "REVENUE" ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
               {formatCurrency(tx.amount)}
             </TableCell>
             <TableCell>
-              <button
-                onClick={() => togglePaymentStatus(tx)}
-                className="hover:opacity-70 transition-opacity"
-              >
+              <button onClick={() => togglePaymentStatus(tx)} className="hover:opacity-70 transition-opacity">
                 {tx.paymentStatus === "COMPLETED" ? (
                   <Badge variant="success" className="cursor-pointer text-xs px-1.5">
                     완료
@@ -591,10 +590,7 @@ export default function FinancePage() {
                     수정
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => openDeleteDialog(tx.id)}
-                    className="text-destructive"
-                  >
+                  <DropdownMenuItem onClick={() => openDeleteDialog(tx.id)} className="text-destructive">
                     <Trash2 className="h-4 w-4 mr-2" />
                     삭제
                   </DropdownMenuItem>
@@ -613,9 +609,7 @@ export default function FinancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">재무 관리</h1>
-          <p className="text-muted-foreground mt-1">
-            월별 수익과 비용을 한눈에 관리합니다.
-          </p>
+          <p className="text-muted-foreground mt-1">월별 수익과 비용을 한눈에 관리합니다.</p>
         </div>
         <Button variant="outline" asChild>
           <Link href="/finance/bulk">
@@ -649,12 +643,7 @@ export default function FinancePage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={goToNextMonth}
-                disabled={isCurrentMonth}
-              >
+              <Button variant="outline" size="icon" onClick={goToNextMonth} disabled={isCurrentMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -672,14 +661,11 @@ export default function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-emerald-600">
-              {formatCurrency(totalRevenue)}
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {revenueTransactions.length}건
-            </p>
+            <div className="text-3xl font-bold text-emerald-600">{formatCurrency(totalRevenue)}</div>
+            <p className="text-sm text-gray-500 mt-1">{revenueTransactions.length}건</p>
           </CardContent>
         </Card>
+
         <Card className="border-2 border-red-500 bg-white dark:bg-gray-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-red-600 flex items-center gap-2">
@@ -688,14 +674,11 @@ export default function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">
-              {formatCurrency(totalExpense)}
-            </div>
-            <p className="text-sm text-gray-500 mt-1">
-              {expenseTransactions.length}건
-            </p>
+            <div className="text-3xl font-bold text-red-600">{formatCurrency(totalExpense)}</div>
+            <p className="text-sm text-gray-500 mt-1">{expenseTransactions.length}건</p>
           </CardContent>
         </Card>
+
         <Card className="border-2 border-gray-300 bg-white dark:bg-gray-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
@@ -762,9 +745,7 @@ export default function FinancePage() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.totalFee)}
-                        </TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(item.totalFee)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -786,14 +767,13 @@ export default function FinancePage() {
                         <TableCell>
                           <div className="flex flex-col">
                             <span className="font-medium">{item.project.name}</span>
+                            {/* ✅ conflict 해결: client null-safe */}
                             <span className="text-xs text-muted-foreground">
                               {item.project.client?.name || "클라이언트 미지정"}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.totalFee)}
-                        </TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrency(item.totalFee)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -917,9 +897,7 @@ export default function FinancePage() {
                 {formatCurrency(totalReceivables)}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              아직 입금되지 않은 수입 {receivables.length}건
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">아직 입금되지 않은 수입 {receivables.length}건</p>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -935,18 +913,12 @@ export default function FinancePage() {
               <TableBody>
                 {receivables.map((tx) => (
                   <TableRow key={tx.id} className="group">
-                    <TableCell className="text-muted-foreground text-sm">
-                      {new Date(tx.date).getDate()}일
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {getCategoryLabel(tx.type, tx.category)}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
+                    <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
                     <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
                       {tx.memo || tx.client?.name || "-"}
                     </TableCell>
-                    <TableCell className="text-right font-medium text-amber-600">
-                      {formatCurrency(tx.amount)}
-                    </TableCell>
+                    <TableCell className="text-right font-medium text-amber-600">{formatCurrency(tx.amount)}</TableCell>
                     <TableCell>
                       <Button
                         variant="outline"
@@ -971,26 +943,17 @@ export default function FinancePage() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>거래 수정</DialogTitle>
-            <DialogDescription>
-              거래 내역을 수정합니다.
-            </DialogDescription>
+            <DialogDescription>거래 내역을 수정합니다.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>날짜</Label>
-                <Input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                />
+                <Input type="date" value={editForm.date} onChange={(e) => setEditForm({ ...editForm, date: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>유형</Label>
-                <Select
-                  value={editForm.type}
-                  onValueChange={(value) => setEditForm({ ...editForm, type: value, category: "" })}
-                >
+                <Select value={editForm.type} onValueChange={(value) => setEditForm({ ...editForm, type: value, category: "" })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1005,10 +968,7 @@ export default function FinancePage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>카테고리</Label>
-                <Select
-                  value={editForm.category}
-                  onValueChange={(value) => setEditForm({ ...editForm, category: value })}
-                >
+                <Select value={editForm.category} onValueChange={(value) => setEditForm({ ...editForm, category: value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
@@ -1022,9 +982,7 @@ export default function FinancePage() {
                     ) : (
                       Object.entries(EXPENSE_CATEGORY_GROUPS).map(([groupName, categories]) => (
                         <div key={groupName}>
-                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                            {groupName}
-                          </div>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{groupName}</div>
                           {categories.map((cat) => (
                             <SelectItem key={cat.value} value={cat.value}>
                               {cat.label}
@@ -1038,20 +996,13 @@ export default function FinancePage() {
               </div>
               <div className="space-y-2">
                 <Label>금액</Label>
-                <Input
-                  type="number"
-                  value={editForm.amount}
-                  onChange={(e) => setEditForm({ ...editForm, amount: Number(e.target.value) })}
-                />
+                <Input type="number" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: Number(e.target.value) })} />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label>결제 상태</Label>
-              <Select
-                value={editForm.paymentStatus}
-                onValueChange={(value) => setEditForm({ ...editForm, paymentStatus: value })}
-              >
+              <Select value={editForm.paymentStatus} onValueChange={(value) => setEditForm({ ...editForm, paymentStatus: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1064,12 +1015,7 @@ export default function FinancePage() {
 
             <div className="space-y-2">
               <Label>메모</Label>
-              <Textarea
-                value={editForm.memo}
-                onChange={(e) => setEditForm({ ...editForm, memo: e.target.value })}
-                placeholder="메모 입력"
-                rows={3}
-              />
+              <Textarea value={editForm.memo} onChange={(e) => setEditForm({ ...editForm, memo: e.target.value })} placeholder="메모 입력" rows={3} />
             </div>
           </div>
           <div className="flex justify-end gap-2">
@@ -1089,9 +1035,7 @@ export default function FinancePage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>거래 삭제</AlertDialogTitle>
-            <AlertDialogDescription>
-              이 거래 내역을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
-            </AlertDialogDescription>
+            <AlertDialogDescription>이 거래 내역을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>취소</AlertDialogCancel>
@@ -1107,7 +1051,7 @@ export default function FinancePage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Add Revenue Dialog (수입 추가) */}
+      {/* Add Revenue Dialog */}
       <Dialog open={isAddRevenueDialogOpen} onOpenChange={setIsAddRevenueDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -1115,10 +1059,9 @@ export default function FinancePage() {
               <ArrowUpRight className="h-5 w-5" />
               수입 추가
             </DialogTitle>
-            <DialogDescription>
-              고정업체를 선택하면 금액이 자동으로 입력됩니다.
-            </DialogDescription>
+            <DialogDescription>고정업체를 선택하면 금액이 자동으로 입력됩니다.</DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1131,10 +1074,7 @@ export default function FinancePage() {
               </div>
               <div className="space-y-2">
                 <Label>카테고리</Label>
-                <Select
-                  value={newRevenueForm.category}
-                  onValueChange={(value) => setNewRevenueForm({ ...newRevenueForm, category: value })}
-                >
+                <Select value={newRevenueForm.category} onValueChange={(value) => setNewRevenueForm({ ...newRevenueForm, category: value })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1149,7 +1089,6 @@ export default function FinancePage() {
               </div>
             </div>
 
-            {/* 고정업체 선택 */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
@@ -1183,7 +1122,6 @@ export default function FinancePage() {
               </Select>
             </div>
 
-            {/* 금액 입력 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>금액 (만원)</Label>
@@ -1191,12 +1129,9 @@ export default function FinancePage() {
                   <Checkbox
                     id="manualAmount"
                     checked={newRevenueForm.isManualAmount}
-                    onCheckedChange={(checked) => {
-                      setNewRevenueForm({
-                        ...newRevenueForm,
-                        isManualAmount: checked as boolean,
-                      });
-                    }}
+                    onCheckedChange={(checked) =>
+                      setNewRevenueForm({ ...newRevenueForm, isManualAmount: checked as boolean })
+                    }
                   />
                   <Label htmlFor="manualAmount" className="text-sm cursor-pointer flex items-center gap-1">
                     <Pencil className="h-3 w-3" />
@@ -1204,6 +1139,7 @@ export default function FinancePage() {
                   </Label>
                 </div>
               </div>
+
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -1212,32 +1148,23 @@ export default function FinancePage() {
                   onChange={(e) => {
                     const value = e.target.value;
                     const amount = value ? Number(value) * 10000 : 0;
-                    setNewRevenueForm({
-                      ...newRevenueForm,
-                      amountInMan: value,
-                      amount,
-                      isManualAmount: true,
-                    });
+                    setNewRevenueForm({ ...newRevenueForm, amountInMan: value, amount, isManualAmount: true });
                   }}
                   disabled={!newRevenueForm.isManualAmount && selectedVendor !== ""}
                 />
                 <span className="text-muted-foreground whitespace-nowrap">만원</span>
               </div>
+
               {newRevenueForm.amount > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  = {formatCurrency(newRevenueForm.amount)}
-                </p>
+                <p className="text-xs text-muted-foreground">= {formatCurrency(newRevenueForm.amount)}</p>
               )}
             </div>
 
-            {/* 미수 체크박스 */}
             <div className="flex items-center space-x-2 p-3 border rounded-lg bg-amber-50 border-amber-200">
               <Checkbox
                 id="isReceivable"
                 checked={newRevenueForm.isReceivable}
-                onCheckedChange={(checked) =>
-                  setNewRevenueForm({ ...newRevenueForm, isReceivable: checked as boolean })
-                }
+                onCheckedChange={(checked) => setNewRevenueForm({ ...newRevenueForm, isReceivable: checked as boolean })}
               />
               <Label htmlFor="isReceivable" className="cursor-pointer text-amber-800">
                 미수 (아직 입금되지 않음)
@@ -1246,14 +1173,10 @@ export default function FinancePage() {
 
             <div className="space-y-2">
               <Label>메모</Label>
-              <Textarea
-                value={newRevenueForm.memo}
-                onChange={(e) => setNewRevenueForm({ ...newRevenueForm, memo: e.target.value })}
-                placeholder="메모 입력"
-                rows={2}
-              />
+              <Textarea value={newRevenueForm.memo} onChange={(e) => setNewRevenueForm({ ...newRevenueForm, memo: e.target.value })} placeholder="메모 입력" rows={2} />
             </div>
           </div>
+
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsAddRevenueDialogOpen(false)} disabled={isSubmitting}>
               취소
@@ -1266,7 +1189,7 @@ export default function FinancePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Expense Dialog (지출 추가) */}
+      {/* Add Expense Dialog */}
       <Dialog open={isAddExpenseDialogOpen} onOpenChange={setIsAddExpenseDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -1274,10 +1197,9 @@ export default function FinancePage() {
               <ArrowDownRight className="h-5 w-5" />
               지출 추가
             </DialogTitle>
-            <DialogDescription>
-              지출 내역을 입력하세요.
-            </DialogDescription>
+            <DialogDescription>지출 내역을 입력하세요.</DialogDescription>
           </DialogHeader>
+
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1290,19 +1212,14 @@ export default function FinancePage() {
               </div>
               <div className="space-y-2">
                 <Label>카테고리</Label>
-                <Select
-                  value={newExpenseForm.category}
-                  onValueChange={(value) => setNewExpenseForm({ ...newExpenseForm, category: value })}
-                >
+                <Select value={newExpenseForm.category} onValueChange={(value) => setNewExpenseForm({ ...newExpenseForm, category: value })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {Object.entries(EXPENSE_CATEGORY_GROUPS).map(([groupName, categories]) => (
                       <div key={groupName}>
-                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                          {groupName}
-                        </div>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{groupName}</div>
                         {categories.map((cat) => (
                           <SelectItem key={cat.value} value={cat.value}>
                             {cat.label}
@@ -1315,7 +1232,6 @@ export default function FinancePage() {
               </div>
             </div>
 
-            {/* 금액 입력 */}
             <div className="space-y-2">
               <Label>금액 (만원)</Label>
               <div className="flex items-center gap-2">
@@ -1326,32 +1242,22 @@ export default function FinancePage() {
                   onChange={(e) => {
                     const value = e.target.value;
                     const amount = value ? Number(value) * 10000 : 0;
-                    setNewExpenseForm({
-                      ...newExpenseForm,
-                      amountInMan: value,
-                      amount,
-                    });
+                    setNewExpenseForm({ ...newExpenseForm, amountInMan: value, amount });
                   }}
                 />
                 <span className="text-muted-foreground whitespace-nowrap">만원</span>
               </div>
               {newExpenseForm.amount > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  = {formatCurrency(newExpenseForm.amount)}
-                </p>
+                <p className="text-xs text-muted-foreground">= {formatCurrency(newExpenseForm.amount)}</p>
               )}
             </div>
 
             <div className="space-y-2">
               <Label>메모</Label>
-              <Textarea
-                value={newExpenseForm.memo}
-                onChange={(e) => setNewExpenseForm({ ...newExpenseForm, memo: e.target.value })}
-                placeholder="메모 입력"
-                rows={2}
-              />
+              <Textarea value={newExpenseForm.memo} onChange={(e) => setNewExpenseForm({ ...newExpenseForm, memo: e.target.value })} placeholder="메모 입력" rows={2} />
             </div>
           </div>
+
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsAddExpenseDialogOpen(false)} disabled={isSubmitting}>
               취소
