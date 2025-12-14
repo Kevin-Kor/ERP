@@ -138,6 +138,10 @@ export default function EditInfluencerPage() {
     async function fetchProjects() {
       try {
         const res = await fetch("/api/projects");
+        if (!res.ok) {
+          throw new Error("Failed to load projects");
+        }
+
         const data = await res.json();
         setProjectOptions(
           (data.projects || []).map((project: any) => ({
@@ -147,6 +151,7 @@ export default function EditInfluencerPage() {
         );
       } catch (error) {
         console.error("Failed to load projects", error);
+        setProjectOptions([]);
       }
     }
 
@@ -206,11 +211,14 @@ export default function EditInfluencerPage() {
           categories: selectedCategories.join(",") || null,
           projectAssignments: projectAssignments
             .filter((assignment) => assignment.projectId)
-            .map((assignment) => ({
-              projectId: assignment.projectId,
-              fee: assignment.fee ? Number(assignment.fee) : 0,
-              paymentStatus: assignment.paymentStatus,
-            })),
+            .map((assignment) => {
+              const feeNumber = Number(assignment.fee);
+              return {
+                projectId: assignment.projectId,
+                fee: Number.isFinite(feeNumber) && feeNumber > 0 ? feeNumber : 0,
+                paymentStatus: assignment.paymentStatus,
+              };
+            }),
         }),
       });
 
@@ -466,7 +474,7 @@ export default function EditInfluencerPage() {
                   </TableRow>
                 ) : (
                   projectAssignments.map((assignment, index) => (
-                    <TableRow key={`${assignment.projectId}-${index}`}>
+                    <TableRow key={`${assignment.projectId || "new"}-${index}`}>
                       <TableCell>
                         <Select
                           value={assignment.projectId}
