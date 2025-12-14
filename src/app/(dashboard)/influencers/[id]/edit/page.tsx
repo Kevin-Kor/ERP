@@ -3,45 +3,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Globe,
-  Instagram,
-  Loader2,
-  PlusCircle,
-  Trash2,
-  Youtube,
-} from "lucide-react";
+import { ArrowLeft, Globe, Instagram, Loader2, PlusCircle, Trash2, Youtube } from "lucide-react";
 
 import { INFLUENCER_CATEGORIES } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SettlementStatus = "pending" | "in_progress" | "completed";
 
@@ -92,7 +65,6 @@ export default function EditInfluencerPage() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [projectAssignments, setProjectAssignments] = useState<ProjectAssignment[]>([]);
-
   const [formData, setFormData] = useState({
     name: "",
     instagramId: "",
@@ -194,10 +166,7 @@ export default function EditInfluencerPage() {
   };
 
   const addAssignmentRow = () => {
-    setProjectAssignments((prev) => [
-      ...prev,
-      { projectId: "", fee: "", paymentStatus: "pending" },
-    ]);
+    setProjectAssignments((prev) => [...prev, { projectId: "", fee: "", paymentStatus: "pending" }]);
   };
 
   const removeAssignmentRow = (index: number) => {
@@ -269,9 +238,7 @@ export default function EditInfluencerPage() {
         </Button>
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">인플루언서 수정</h1>
-          <p className="text-muted-foreground mt-1 text-sm sm:text-base">
-            인플루언서 정보를 수정합니다.
-          </p>
+          <p className="text-muted-foreground mt-1 text-sm sm:text-base">인플루언서 정보를 수정합니다.</p>
         </div>
       </div>
 
@@ -314,9 +281,7 @@ export default function EditInfluencerPage() {
                   onChange={(e) => setFormData({ ...formData, bankAccount: e.target.value })}
                   placeholder="은행명 계좌번호 예금주"
                 />
-                <p className="text-xs text-muted-foreground">
-                  예: 국민은행 123-456-789012 홍길동
-                </p>
+                <p className="text-xs text-muted-foreground">예: 국민은행 123-456-789012 홍길동</p>
               </div>
 
               <div className="space-y-2">
@@ -404,10 +369,7 @@ export default function EditInfluencerPage() {
                 <Label>카테고리</Label>
                 <div className="flex flex-wrap gap-3">
                   {INFLUENCER_CATEGORIES.map((category) => (
-                    <label
-                      key={category.value}
-                      className="flex items-center space-x-2 text-sm"
-                    >
+                    <label key={category.value} className="flex items-center space-x-2 text-sm">
                       <Checkbox
                         checked={selectedCategories.includes(category.value)}
                         onCheckedChange={(checked) =>
@@ -423,8 +385,7 @@ export default function EditInfluencerPage() {
                   <div className="flex flex-wrap gap-2 pt-1">
                     {selectedCategories.map((category) => {
                       const label =
-                        INFLUENCER_CATEGORIES.find((c) => c.value === category)?.label ||
-                        category;
+                        INFLUENCER_CATEGORIES.find((c) => c.value === category)?.label || category;
                       return (
                         <Badge key={category} variant="secondary">
                           {label}
@@ -462,7 +423,7 @@ export default function EditInfluencerPage() {
                   <TableHead>프로젝트</TableHead>
                   <TableHead>정산 금액</TableHead>
                   <TableHead>정산 상태</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
+                  <TableHead className="w-[60px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
