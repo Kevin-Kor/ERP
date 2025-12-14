@@ -26,6 +26,10 @@ export type Intent =
   | "query_settlement"
   | "query_spending"
   | "query_influencer"
+  | "query_schedule"
+  | "update_status"
+  | "smart_search"
+  | "follow_up"
   | "generate_report"
   | "unknown";
 
@@ -99,7 +103,23 @@ function getSystemPrompt(): string {
     - 키워드: [인플루언서명] 정보, [인플루언서명] 협업, 인플루언서 찾기
     - data: { searchTerm: "인플루언서명 또는 검색어" }
 
-11. **generate_report** - 리포트 생성 요청
+11. **query_schedule** - 일정/마감/스케줄 조회
+    - 키워드: 이번주 일정, 마감, 스케줄, 오늘 할일, 내일 일정, 다음주 일정
+    - data: { period: "today"|"tomorrow"|"this_week"|"next_week"|"this_month", type: "all"|"meeting"|"deadline"|"calendar" (선택) }
+
+12. **update_status** - 프로젝트/정산/할일 상태 업데이트
+    - 키워드: 완료 처리, 상태 변경, ~했어, ~끝났어, 취소해줘
+    - data: { targetType: "project"|"settlement"|"todo", searchTerm: "대상명", newStatus: "COMPLETED"|"IN_PROGRESS"|"CANCELLED" }
+
+13. **smart_search** - 통합 자연어 검색 (무엇이든 찾기)
+    - 키워드: 찾아줘, 검색해줘, 어디있어, 뭐였지, 최근에 ~한 거
+    - data: { searchTerm: "검색어", searchType: "all"|"client"|"project"|"influencer"|"transaction" (선택) }
+
+14. **follow_up** - 이전 대화 맥락 기반 후속 질문
+    - 키워드: 더 자세히, 그거, 아까 그거, 더 알려줘, 지난달은?
+    - data: { followUpType: "detail"|"compare"|"extend", context: "맥락 정보" }
+
+15. **generate_report** - 리포트 생성 요청
     - 키워드: 리포트, 보고서, 주간 리포트, 월간 리포트
     - data: { reportType: "weekly"|"monthly"|"daily" }
 
@@ -186,13 +206,60 @@ function getSystemPrompt(): string {
 입력: "이번달 리포트 만들어"
 출력: {"intent": "generate_report", "confidence": 0.9, "data": {"reportType": "monthly"}}
 
+### 조회 - 일정/마감
+입력: "이번주 마감하는 일정 알려줘"
+출력: {"intent": "query_schedule", "confidence": 0.95, "data": {"period": "this_week", "type": "deadline"}}
+
+입력: "오늘 뭐해야해?"
+출력: {"intent": "query_schedule", "confidence": 0.9, "data": {"period": "today", "type": "all"}}
+
+입력: "다음주에 미팅 있어?"
+출력: {"intent": "query_schedule", "confidence": 0.9, "data": {"period": "next_week", "type": "meeting"}}
+
+입력: "내일 일정"
+출력: {"intent": "query_schedule", "confidence": 0.95, "data": {"period": "tomorrow", "type": "all"}}
+
+### 상태 업데이트
+입력: "ABC 프로젝트 완료 처리해줘"
+출력: {"intent": "update_status", "confidence": 0.95, "data": {"targetType": "project", "searchTerm": "ABC", "newStatus": "COMPLETED"}}
+
+입력: "김민수 정산 완료했어"
+출력: {"intent": "update_status", "confidence": 0.9, "data": {"targetType": "settlement", "searchTerm": "김민수", "newStatus": "COMPLETED"}}
+
+입력: "뷰티 캠페인 진행중으로 바꿔줘"
+출력: {"intent": "update_status", "confidence": 0.9, "data": {"targetType": "project", "searchTerm": "뷰티 캠페인", "newStatus": "IN_PROGRESS"}}
+
+### 통합 검색
+입력: "최근에 진행한 뷰티 캠페인 뭐 있었지?"
+출력: {"intent": "smart_search", "confidence": 0.9, "data": {"searchTerm": "뷰티 캠페인", "searchType": "project"}}
+
+입력: "작년에 협업한 인플루언서 찾아줘"
+출력: {"intent": "smart_search", "confidence": 0.85, "data": {"searchTerm": "작년 협업", "searchType": "influencer"}}
+
+입력: "지난달 광고비 지출 어디있어?"
+출력: {"intent": "smart_search", "confidence": 0.85, "data": {"searchTerm": "광고비", "searchType": "transaction"}}
+
+### 후속 질문
+입력: "더 자세히 알려줘"
+출력: {"intent": "follow_up", "confidence": 0.9, "data": {"followUpType": "detail"}}
+
+입력: "지난달은?"
+출력: {"intent": "follow_up", "confidence": 0.85, "data": {"followUpType": "compare", "context": "지난달"}}
+
+입력: "다른 거 더 보여줘"
+출력: {"intent": "follow_up", "confidence": 0.8, "data": {"followUpType": "extend"}}
+
 **핵심 판단 기준:**
 - 금액+동작(썼다/입금) → add_transaction
-- 날짜+일정/미팅 → add_calendar
+- 날짜+일정/미팅+등록 → add_calendar
 - [이름/회사명]+정보/현황/정산 → query_* (조회)
 - 전체 현황/통계 → query_dashboard
 - 정산+대기/현황 → query_settlement
 - 지출+분석/카테고리 → query_spending
+- 일정/마감/스케줄+조회 → query_schedule
+- 완료/상태변경/~했어 → update_status
+- 찾아줘/검색/어디있어 → smart_search
+- 더 자세히/그거/아까 → follow_up
 - 리포트/보고서 → generate_report`;
 }
 

@@ -22,6 +22,14 @@ function verifyCronAuth(request: NextRequest): boolean {
   return false;
 }
 
+// 금액 포맷팅 (만원 단위)
+function formatAmountShort(amount: number): string {
+  if (amount >= 10000) {
+    return (amount / 10000).toFixed(1).replace(/\.0$/, "") + "만원";
+  }
+  return amount.toLocaleString("ko-KR") + "원";
+}
+
 // 날짜 차이 계산 (일 단위)
 function getDaysDiff(targetDate: Date, today: Date): number {
   const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
@@ -254,26 +262,210 @@ export async function POST(request: NextRequest) {
       alerts.push(formatTaxInvoiceAlerts(taxInvoiceAlerts));
     }
 
-    // Slack으로 알림 전송
-    if (alerts.length > 0 && SLACK_CHANNEL_ID) {
-      const header = `📊 *일일 자동 알림* (${today.toLocaleDateString("ko-KR")})\n${"─".repeat(30)}\n\n`;
-      const fullMessage = header + alerts.join("\n" + "─".repeat(30) + "\n\n");
+    // 4. 오늘의 일정 브리핑 (Daily Briefing)
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
 
-      await sendSlackMessage(SLACK_CHANNEL_ID, fullMessage);
+    const todayMeetings = await prisma.calendarEvent.findMany({
+      where: {
+        date: { gte: todayStart, lte: todayEnd },
+      },
+      orderBy: { date: "asc" },
+    });
+
+    const todayProjectDeadlines = await prisma.project.findMany({
+      where: {
+        endDate: { gte: todayStart, lte: todayEnd },
+        status: { in: ["IN_PROGRESS", "QUOTING"] },
+      },
+      include: { Client: { select: { name: true } } },
+    });
+
+    // 진행 중인 프로젝트
+    const activeProjects = await prisma.project.count({
+      where: { status: "IN_PROGRESS" },
+    });
+
+    // 이번주 마감 예정 프로젝트
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + (7 - today.getDay()));
+    const thisWeekDeadlines = await prisma.project.count({
+      where: {
+        endDate: { gte: todayStart, lte: weekEnd },
+        status: "IN_PROGRESS",
+      },
+    });
+
+    // Daily Briefing 메시지
+    let briefingMessage = `☀️ *오늘의 브리핑* (${today.toLocaleDateString("ko-KR", { weekday: "long", month: "long", day: "numeric" })})\n\n`;
+
+    // 오늘 일정
+    if (todayMeetings.length > 0 || todayProjectDeadlines.length > 0) {
+      briefingMessage += `📅 *오늘 일정*\n`;
+      todayMeetings.forEach((m) => {
+        const typeEmoji = m.type === "MEETING" ? "🤝" : m.type === "DEADLINE" ? "⏰" : "📌";
+        briefingMessage += `${typeEmoji} ${m.title}\n`;
+      });
+      todayProjectDeadlines.forEach((p) => {
+        briefingMessage += `📁 [마감] ${p.name} (${p.Client.name})\n`;
+      });
+      briefingMessage += `\n`;
+    } else {
+      briefingMessage += `📅 오늘 예정된 일정이 없습니다.\n\n`;
+    }
+
+    // 현황 요약
+    briefingMessage += `📊 *현황 요약*\n`;
+    briefingMessage += `• 진행 중 프로젝트: ${activeProjects}건\n`;
+    briefingMessage += `• 이번주 마감 예정: ${thisWeekDeadlines}건\n`;
+    briefingMessage += `• 정산 대기: ${pendingSettlements.length}건\n\n`;
+
+    // 5. 이상 징후 감지 (Anomaly Detection)
+    const anomalies: string[] = [];
+
+    // 이번달 vs 지난달 지출 비교
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59);
+
+    const thisMonthExpense = await prisma.transaction.aggregate({
+      where: {
+        type: "EXPENSE",
+        date: { gte: thisMonthStart, lte: todayEnd },
+      },
+      _sum: { amount: true },
+    });
+
+    const lastMonthExpense = await prisma.transaction.aggregate({
+      where: {
+        type: "EXPENSE",
+        date: { gte: lastMonthStart, lte: lastMonthEnd },
+      },
+      _sum: { amount: true },
+    });
+
+    const thisMonthExpenseAmount = thisMonthExpense._sum.amount || 0;
+    const lastMonthExpenseAmount = lastMonthExpense._sum.amount || 0;
+
+    // 지출이 지난달 대비 50% 이상 증가
+    if (lastMonthExpenseAmount > 0) {
+      const expenseChangePercent = ((thisMonthExpenseAmount - lastMonthExpenseAmount) / lastMonthExpenseAmount) * 100;
+      if (expenseChangePercent > 50) {
+        anomalies.push(
+          `📈 *지출 급증 알림*\n` +
+          `이번달 지출이 지난달 대비 ${expenseChangePercent.toFixed(0)}% 증가했습니다.\n` +
+          `• 이번달: ${formatAmountShort(thisMonthExpenseAmount)}\n` +
+          `• 지난달: ${formatAmountShort(lastMonthExpenseAmount)}`
+        );
+      }
+    }
+
+    // 매출이 지난달 대비 30% 이상 감소
+    const thisMonthRevenue = await prisma.transaction.aggregate({
+      where: {
+        type: "REVENUE",
+        date: { gte: thisMonthStart, lte: todayEnd },
+      },
+      _sum: { amount: true },
+    });
+
+    const lastMonthRevenue = await prisma.transaction.aggregate({
+      where: {
+        type: "REVENUE",
+        date: { gte: lastMonthStart, lte: lastMonthEnd },
+      },
+      _sum: { amount: true },
+    });
+
+    const thisMonthRevenueAmount = thisMonthRevenue._sum.amount || 0;
+    const lastMonthRevenueAmount = lastMonthRevenue._sum.amount || 0;
+
+    if (lastMonthRevenueAmount > 0) {
+      const revenueChangePercent = ((thisMonthRevenueAmount - lastMonthRevenueAmount) / lastMonthRevenueAmount) * 100;
+      if (revenueChangePercent < -30) {
+        anomalies.push(
+          `📉 *매출 감소 알림*\n` +
+          `이번달 매출이 지난달 대비 ${Math.abs(revenueChangePercent).toFixed(0)}% 감소했습니다.\n` +
+          `• 이번달: ${formatAmountShort(thisMonthRevenueAmount)}\n` +
+          `• 지난달: ${formatAmountShort(lastMonthRevenueAmount)}`
+        );
+      }
+    }
+
+    // 연체된 정산이 5건 이상
+    if (overdueAlerts.length >= 5) {
+      anomalies.push(
+        `⚠️ *정산 연체 경고*\n` +
+        `연체된 정산이 ${overdueAlerts.length}건 있습니다. 즉시 처리가 필요합니다.`
+      );
+    }
+
+    // 6. 스마트 리마인더 (오늘/내일 미팅 알림)
+    const tomorrowStart = new Date(today);
+    tomorrowStart.setDate(today.getDate() + 1);
+    tomorrowStart.setHours(0, 0, 0, 0);
+    const tomorrowEnd = new Date(tomorrowStart);
+    tomorrowEnd.setHours(23, 59, 59, 999);
+
+    const tomorrowMeetings = await prisma.calendarEvent.findMany({
+      where: {
+        date: { gte: tomorrowStart, lte: tomorrowEnd },
+        type: "MEETING",
+      },
+    });
+
+    let reminderMessage = "";
+    if (tomorrowMeetings.length > 0) {
+      reminderMessage = `\n🔔 *내일 미팅 알림*\n`;
+      tomorrowMeetings.forEach((m) => {
+        reminderMessage += `• ${m.title}\n`;
+      });
+    }
+
+    // Slack으로 알림 전송
+    if (SLACK_CHANNEL_ID) {
+      // 1. 브리핑 전송 (매일)
+      await sendSlackMessage(SLACK_CHANNEL_ID, briefingMessage + reminderMessage);
+
+      // 2. 정산/미수금 알림 전송 (있는 경우만)
+      if (alerts.length > 0) {
+        const alertHeader = `🚨 *알림 사항*\n${"─".repeat(30)}\n\n`;
+        const alertMessage = alertHeader + alerts.join("\n" + "─".repeat(30) + "\n\n");
+        await sendSlackMessage(SLACK_CHANNEL_ID, alertMessage);
+      }
+
+      // 3. 이상 징후 알림 (있는 경우만)
+      if (anomalies.length > 0) {
+        const anomalyHeader = `🔍 *이상 징후 감지*\n${"─".repeat(30)}\n\n`;
+        const anomalyMessage = anomalyHeader + anomalies.join("\n\n");
+        await sendSlackMessage(SLACK_CHANNEL_ID, anomalyMessage);
+      }
     }
 
     return NextResponse.json({
       success: true,
       message: "일일 알림 처리 완료",
       summary: {
-        settlementD7: d7Alerts.length,
-        settlementD3: d3Alerts.length,
-        settlementDDay: dDayAlerts.length,
-        settlementOverdue: overdueAlerts.length,
-        unpaid: unpaidAlerts.length,
-        taxInvoicePending: taxInvoiceAlerts.length,
+        briefing: {
+          todayMeetings: todayMeetings.length,
+          todayDeadlines: todayProjectDeadlines.length,
+          activeProjects,
+          thisWeekDeadlines,
+        },
+        alerts: {
+          settlementD7: d7Alerts.length,
+          settlementD3: d3Alerts.length,
+          settlementDDay: dDayAlerts.length,
+          settlementOverdue: overdueAlerts.length,
+          unpaid: unpaidAlerts.length,
+          taxInvoicePending: taxInvoiceAlerts.length,
+        },
+        anomalies: anomalies.length,
+        reminders: {
+          tomorrowMeetings: tomorrowMeetings.length,
+        },
       },
-      sentToSlack: alerts.length > 0,
+      sentToSlack: true,
     });
   } catch (error) {
     console.error("일일 알림 처리 오류:", error);
