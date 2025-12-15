@@ -27,6 +27,7 @@ export type Intent =
   | "query_spending"
   | "query_influencer"
   | "query_schedule"
+  | "query_todo"
   | "update_status"
   | "smart_search"
   | "follow_up"
@@ -74,7 +75,16 @@ function getSystemPrompt(): string {
    - 키워드: 일정, 미팅, 회의, 약속, 스케줄, ~일에, ~에 만나
 
 3. **add_influencer** - 인플루언서 등록
-   - 키워드: 인플루언서, 크리에이터, 유튜버, 인스타그래머
+   - 키워드: 인플루언서, 크리에이터, 유튜버, 인스타그래머, 추가해줘
+   - data: {
+       name: "이름 (필수)",
+       instagramId: "인스타 계정이름 (@제외)",
+       youtubeChannel: "유튜브 채널명",
+       priceRange: "비용/단가 (예: 20만원)",
+       bankAccount: "계좌정보 (계좌번호 / 은행명)",
+       memo: "기타 메모"
+     }
+   - **중요**: 사용자가 여러 줄로 정보를 입력하면 각 필드를 파싱해서 추출
 
 4. **add_client** - 클라이언트/고객사 등록
    - 키워드: 클라이언트, 고객, 거래처, 업체
@@ -103,23 +113,27 @@ function getSystemPrompt(): string {
     - 키워드: [인플루언서명] 정보, [인플루언서명] 협업, 인플루언서 찾기
     - data: { searchTerm: "인플루언서명 또는 검색어" }
 
-11. **query_schedule** - 일정/마감/스케줄 조회
-    - 키워드: 이번주 일정, 마감, 스케줄, 오늘 할일, 내일 일정, 다음주 일정
+11. **query_schedule** - 일정/마감/스케줄 조회 (프로젝트/캘린더)
+    - 키워드: 이번주 일정, 마감, 스케줄, 내일 일정, 다음주 일정
     - data: { period: "today"|"tomorrow"|"this_week"|"next_week"|"this_month", type: "all"|"meeting"|"deadline"|"calendar" (선택) }
 
-12. **update_status** - 프로젝트/정산/할일 상태 업데이트
+12. **query_todo** - 팀 Todo/할일 조회
+    - 키워드: 할일, 해야할일, 뭐해야해, 뭐해야돼, Todo, 투두, 작업, [사람이름]이 뭐해야해
+    - data: { memberName: "담당자 이름 (선택)" }
+
+13. **update_status** - 프로젝트/정산/할일 상태 업데이트
     - 키워드: 완료 처리, 상태 변경, ~했어, ~끝났어, 취소해줘
     - data: { targetType: "project"|"settlement"|"todo", searchTerm: "대상명", newStatus: "COMPLETED"|"IN_PROGRESS"|"CANCELLED" }
 
-13. **smart_search** - 통합 자연어 검색 (무엇이든 찾기)
+14. **smart_search** - 통합 자연어 검색 (무엇이든 찾기)
     - 키워드: 찾아줘, 검색해줘, 어디있어, 뭐였지, 최근에 ~한 거
     - data: { searchTerm: "검색어", searchType: "all"|"client"|"project"|"influencer"|"transaction" (선택) }
 
-14. **follow_up** - 이전 대화 맥락 기반 후속 질문
+15. **follow_up** - 이전 대화 맥락 기반 후속 질문
     - 키워드: 더 자세히, 그거, 아까 그거, 더 알려줘, 지난달은?
     - data: { followUpType: "detail"|"compare"|"extend", context: "맥락 정보" }
 
-15. **generate_report** - 리포트 생성 요청
+16. **generate_report** - 리포트 생성 요청
     - 키워드: 리포트, 보고서, 주간 리포트, 월간 리포트
     - data: { reportType: "weekly"|"monthly"|"daily" }
 
@@ -160,6 +174,17 @@ function getSystemPrompt(): string {
 ### 일정 등록
 입력: "15일에 B사 미팅있어"
 출력: {"intent": "add_calendar", "confidence": 0.9, "data": {"title": "B사 미팅", "date": "${year}-${month}-15", "type": "MEETING"}}
+
+### 인플루언서 등록 (여러 줄 정보 파싱)
+입력: "인플루언서 추가해줘
+이름 : 용인뭐하지
+인스타 계정이름 : all.about.yongin
+비용: 20만원 (vat 별도)
+계좌번호 : 100-032-321910 / 신한은행"
+출력: {"intent": "add_influencer", "confidence": 0.95, "data": {"name": "용인뭐하지", "instagramId": "all.about.yongin", "priceRange": "20만원 (vat 별도)", "bankAccount": "100-032-321910 / 신한은행"}}
+
+입력: "인플루언서 등록 - 김철수, 인스타: @beauty_kim, 유튜브: 뷰티킴, 단가 50만원"
+출력: {"intent": "add_influencer", "confidence": 0.95, "data": {"name": "김철수", "instagramId": "beauty_kim", "youtubeChannel": "뷰티킴", "priceRange": "50만원"}}
 
 ### 조회 - 클라이언트
 입력: "ABC 회사 정산 얼마 남았어?"
@@ -206,18 +231,34 @@ function getSystemPrompt(): string {
 입력: "이번달 리포트 만들어"
 출력: {"intent": "generate_report", "confidence": 0.9, "data": {"reportType": "monthly"}}
 
-### 조회 - 일정/마감
+### 조회 - 일정/마감 (프로젝트/캘린더)
 입력: "이번주 마감하는 일정 알려줘"
 출력: {"intent": "query_schedule", "confidence": 0.95, "data": {"period": "this_week", "type": "deadline"}}
-
-입력: "오늘 뭐해야해?"
-출력: {"intent": "query_schedule", "confidence": 0.9, "data": {"period": "today", "type": "all"}}
 
 입력: "다음주에 미팅 있어?"
 출력: {"intent": "query_schedule", "confidence": 0.9, "data": {"period": "next_week", "type": "meeting"}}
 
 입력: "내일 일정"
 출력: {"intent": "query_schedule", "confidence": 0.95, "data": {"period": "tomorrow", "type": "all"}}
+
+입력: "이번달 프로젝트 마감"
+출력: {"intent": "query_schedule", "confidence": 0.9, "data": {"period": "this_month", "type": "deadline"}}
+
+### 조회 - 팀 Todo (할일)
+입력: "오늘 뭐해야해?"
+출력: {"intent": "query_todo", "confidence": 0.95, "data": {}}
+
+입력: "Todo 를 보고 최은성이 뭐해야되는지 알려줘"
+출력: {"intent": "query_todo", "confidence": 0.95, "data": {"memberName": "최은성"}}
+
+입력: "내 할일 뭐있어?"
+출력: {"intent": "query_todo", "confidence": 0.9, "data": {}}
+
+입력: "김철수가 해야할 작업 알려줘"
+출력: {"intent": "query_todo", "confidence": 0.95, "data": {"memberName": "김철수"}}
+
+입력: "팀 투두 현황"
+출력: {"intent": "query_todo", "confidence": 0.9, "data": {}}
 
 ### 상태 업데이트
 입력: "ABC 프로젝트 완료 처리해줘"
@@ -252,11 +293,13 @@ function getSystemPrompt(): string {
 **핵심 판단 기준:**
 - 금액+동작(썼다/입금) → add_transaction
 - 날짜+일정/미팅+등록 → add_calendar
+- 인플루언서+추가/등록 → add_influencer (모든 필드 추출)
 - [이름/회사명]+정보/현황/정산 → query_* (조회)
 - 전체 현황/통계 → query_dashboard
 - 정산+대기/현황 → query_settlement
 - 지출+분석/카테고리 → query_spending
-- 일정/마감/스케줄+조회 → query_schedule
+- 프로젝트 마감/일정/미팅 조회 → query_schedule
+- Todo/할일/뭐해야해/작업 → query_todo
 - 완료/상태변경/~했어 → update_status
 - 찾아줘/검색/어디있어 → smart_search
 - 더 자세히/그거/아까 → follow_up
