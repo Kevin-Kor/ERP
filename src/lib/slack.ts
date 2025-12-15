@@ -66,11 +66,18 @@ export function formatSuccessMessage(intent: string, data: Record<string, unknow
       `• 날짜: ${d.date}\n` +
       `• 유형: ${d.typeLabel || d.type}`,
 
-    add_influencer: (d) =>
-      `✅ 인플루언서가 등록되었습니다.\n` +
-      `• 이름: ${d.name}\n` +
-      `• 인스타그램: ${d.instagramId || "-"}\n` +
-      `• 카테고리: ${d.categories || "-"}`,
+    add_influencer: (d) => {
+      let msg = `✅ 인플루언서가 등록되었습니다.\n`;
+      msg += `• 이름: ${d.name}\n`;
+      if (d.instagramId) msg += `• 인스타그램: @${d.instagramId}\n`;
+      if (d.youtubeChannel) msg += `• 유튜브: ${d.youtubeChannel}\n`;
+      if (d.priceRange) msg += `• 비용: ${d.priceRange}\n`;
+      if (d.bankAccount) msg += `• 계좌: ${d.bankAccount}\n`;
+      if (d.phone) msg += `• 연락처: ${d.phone}\n`;
+      if (d.categories) msg += `• 카테고리: ${d.categories}\n`;
+      if (d.memo) msg += `• 메모: ${d.memo}`;
+      return msg.trim();
+    },
 
     add_client: (d) =>
       `✅ 클라이언트가 등록되었습니다.\n` +
@@ -273,6 +280,48 @@ export function formatSuccessMessage(intent: string, data: Record<string, unknow
         return `📊 *비교 데이터*\n${d.context || "지난 기간"} 데이터입니다.`;
       }
       return `ℹ️ 추가 정보입니다.`;
+    },
+
+    query_todo: (d) => {
+      if (!d.found) {
+        if (d.targetMember) {
+          return `📋 *${d.targetMember}* 님의 할일이 없습니다.`;
+        }
+        return `📋 등록된 할일이 없습니다.`;
+      }
+
+      const todosByMember = d.todosByMember as Array<{
+        memberName: string;
+        totalTasks: number;
+        tasksByColumn: Array<{
+          columnName: string;
+          tasks: Array<{ text: string; completed: boolean }>;
+        }>;
+      }>;
+
+      let msg = d.targetMember
+        ? `📋 *${d.targetMember}* 님의 할일 (${d.totalPendingTasks}건)\n\n`
+        : `📋 *팀 할일 현황* (총 ${d.totalPendingTasks}건)\n\n`;
+
+      todosByMember.forEach((member) => {
+        if (member.totalTasks === 0) return;
+
+        msg += `*👤 ${member.memberName}* (${member.totalTasks}건)\n`;
+        member.tasksByColumn.forEach((col) => {
+          if (col.tasks.length === 0) return;
+          msg += `  _${col.columnName}_\n`;
+          col.tasks.slice(0, 5).forEach((task) => {
+            const icon = task.completed ? "✅" : "⬜";
+            msg += `  ${icon} ${task.text}\n`;
+          });
+          if (col.tasks.length > 5) {
+            msg += `  _...외 ${col.tasks.length - 5}건_\n`;
+          }
+        });
+        msg += `\n`;
+      });
+
+      return msg.trim();
     },
 
     generate_report: (d) => {

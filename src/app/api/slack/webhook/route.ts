@@ -65,6 +65,8 @@ async function handleIntent(parsed: ParsedResult, userId: string | null) {
       return await handleQueryInfluencer(data);
     case "query_schedule":
       return await handleQuerySchedule(data);
+    case "query_todo":
+      return await handleQueryTodo(data);
     case "update_status":
       return await handleUpdateStatus(data);
     case "smart_search":
@@ -183,6 +185,8 @@ async function handleAddInfluencer(data: Record<string, unknown>) {
         instagramId: (data.instagramId as string) || null,
         youtubeChannel: (data.youtubeChannel as string) || null,
         categories: data.categories ? JSON.stringify(data.categories) : null,
+        bankAccount: (data.bankAccount as string) || null,
+        priceRange: (data.priceRange as string) || null,
         memo: (data.memo as string) || null,
       },
     });
@@ -790,6 +794,79 @@ async function handleQuerySchedule(data: Record<string, unknown>) {
   } catch (error) {
     console.error("일정 조회 오류:", error);
     return { success: false, message: "일정 조회에 실패했습니다." };
+  }
+}
+
+// 팀 Todo 조회
+async function handleQueryTodo(data: Record<string, unknown>) {
+  try {
+    const memberName = data.memberName as string | undefined;
+
+    // 멤버 조회 (특정 멤버 지정 시)
+    let memberId: string | undefined;
+    let targetMemberName: string | undefined;
+
+    if (memberName) {
+      const member = await prisma.teamTodoMember.findFirst({
+        where: {
+          name: { contains: memberName, mode: "insensitive" },
+        },
+      });
+      if (member) {
+        memberId = member.id;
+        targetMemberName = member.name;
+      }
+    }
+
+    // 컬럼 조회 (순서대로)
+    const columns = await prisma.teamTodoColumn.findMany({
+      orderBy: { order: "asc" },
+    });
+
+    // 모든 멤버와 할일 조회
+    const members = await prisma.teamTodoMember.findMany({
+      where: memberId ? { id: memberId } : undefined,
+      include: {
+        tasks: {
+          where: { completed: false },
+          orderBy: { order: "asc" },
+        },
+      },
+    });
+
+    // 멤버별 할일 정리
+    const todosByMember = members.map((member) => {
+      const tasksByColumn = columns.map((col, idx) => ({
+        columnName: col.name,
+        tasks: member.tasks.filter((t) => t.columnIndex === idx),
+      }));
+
+      const pendingTasks = member.tasks.filter((t) => !t.completed);
+
+      return {
+        memberName: member.name,
+        totalTasks: pendingTasks.length,
+        tasksByColumn: tasksByColumn.filter((c) => c.tasks.length > 0),
+      };
+    });
+
+    // 전체 미완료 할일 수
+    const totalPendingTasks = todosByMember.reduce((sum, m) => sum + m.totalTasks, 0);
+
+    return {
+      success: true,
+      intent: "query_todo",
+      data: {
+        found: totalPendingTasks > 0,
+        targetMember: targetMemberName || null,
+        totalPendingTasks,
+        columns: columns.map((c) => c.name),
+        todosByMember,
+      },
+    };
+  } catch (error) {
+    console.error("팀 Todo 조회 오류:", error);
+    return { success: false, message: "팀 Todo 조회에 실패했습니다." };
   }
 }
 
