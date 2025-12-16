@@ -496,7 +496,7 @@ export default function DashboardPage() {
                       <div className="space-y-1">
                         <p className="font-medium text-sm">{project.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {project.client.name}
+                          {project.client?.name || "클라이언트 미지정"}
                         </p>
                       </div>
                       <div className="text-right">
@@ -562,7 +562,9 @@ export default function DashboardPage() {
                           : "기타"}
                       </Badge>
                       <div>
-                        <p className="font-medium text-sm">{doc.client.name}</p>
+                        <p className="font-medium text-sm">
+                          {doc.client?.name || "클라이언트 미지정"}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {doc.docNumber}
                         </p>
@@ -628,7 +630,7 @@ export default function DashboardPage() {
                           href={`/clients/${tx.client.id}`}
                           className="font-medium hover:text-primary"
                         >
-                          {tx.client.name}
+                          {tx.client?.name || "클라이언트 미지정"}
                         </Link>
                       ) : (
                         <span className="text-muted-foreground">-</span>

@@ -69,8 +69,9 @@ import {
   Upload,
   Banknote,
   Edit,
+  Instagram,
 } from "lucide-react";
-import { formatCurrency, formatDate, STATUS_LABELS } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
 interface Settlement {
@@ -106,9 +107,24 @@ interface Summary {
   completedCount: number;
 }
 
+interface SettlementSummary {
+  statusTotals: Record<string, { amount: number; count: number }>;
+  influencerTotals: {
+    influencer: { id: string; name: string; instagramId: string | null };
+    totalFee: number;
+    projects: number;
+  }[];
+  projectTotals: {
+    project: { id: string; name: string; client: { id: string; name: string } };
+    totalFee: number;
+    influencers: number;
+  }[];
+}
+
 export default function SettlementsPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [detailSummary, setDetailSummary] = useState<SettlementSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -120,9 +136,7 @@ export default function SettlementsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   // 일정 편집 다이얼로그
-  const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(
-    null
-  );
+  const [editingSettlement, setEditingSettlement] = useState<Settlement | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -152,8 +166,21 @@ export default function SettlementsPage() {
     }
   }, [statusFilter, selectedMonth]);
 
+  async function fetchDetailSummary() {
+    try {
+      const res = await fetch("/api/settlements/summary");
+      if (res.ok) {
+        const data = await res.json();
+        setDetailSummary(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch settlement summary:", error);
+    }
+  }
+
   useEffect(() => {
     fetchSettlements();
+    fetchDetailSummary();
   }, [fetchSettlements]);
 
   // 월 이동
@@ -184,6 +211,7 @@ export default function SettlementsPage() {
 
       if (res.ok) {
         fetchSettlements();
+        fetchDetailSummary();
       }
     } catch (error) {
       console.error("Failed to update settlement:", error);
@@ -202,6 +230,7 @@ export default function SettlementsPage() {
       if (res.ok) {
         setIsDeleteDialogOpen(false);
         fetchSettlements();
+        fetchDetailSummary();
       } else {
         alert("삭제에 실패했습니다.");
       }
@@ -281,10 +310,16 @@ export default function SettlementsPage() {
       icon: null,
     };
 
+    const labels: Record<string, string> = {
+      COMPLETED: "완료",
+      REQUESTED: "요청됨",
+      PENDING: "대기",
+    };
+
     return (
       <Badge variant={variant} className="gap-1">
         {icon}
-        {STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status}
+        {labels[status] || status}
       </Badge>
     );
   };
@@ -444,6 +479,102 @@ export default function SettlementsPage() {
         </CardContent>
       </Card>
 
+      {/* Influencer & Project Summary */}
+      {detailSummary && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>인플루언서별 정산 합계</CardTitle>
+              <CardDescription>인플루언서별 누적 정산 금액과 참여 건수</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {detailSummary.influencerTotals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">집계할 데이터가 없습니다.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>인플루언서</TableHead>
+                      <TableHead className="text-right">총 정산액</TableHead>
+                      <TableHead className="text-right">참여 프로젝트</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailSummary.influencerTotals.slice(0, 5).map((item) => (
+                      <TableRow key={item.influencer.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <Link href={`/influencers/${item.influencer.id}`} className="font-medium hover:text-primary">
+                              {item.influencer.name}
+                            </Link>
+                            {item.influencer.instagramId && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Instagram className="h-3 w-3" />
+                                {item.influencer.instagramId}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(item.totalFee)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {item.projects}건
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>프로젝트별 정산 합계</CardTitle>
+              <CardDescription>프로젝트 단위 정산 금액과 참여 인플루언서 수</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {detailSummary.projectTotals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">집계할 데이터가 없습니다.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>프로젝트</TableHead>
+                      <TableHead className="text-right">정산 합계</TableHead>
+                      <TableHead className="text-right">인플루언서</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {detailSummary.projectTotals.slice(0, 5).map((item) => (
+                      <TableRow key={item.project.id}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <Link href={`/projects/${item.project.id}`} className="font-medium hover:text-primary">
+                              {item.project.name}
+                            </Link>
+                            <span className="text-xs text-muted-foreground">
+                              {item.project.client?.name || "클라이언트 미지정"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(item.totalFee)}
+                        </TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {item.influencers}명
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Settlement List with Schedule Timeline */}
       <Card>
         <CardHeader>
@@ -516,7 +647,7 @@ export default function SettlementsPage() {
                           {settlement.project.name}
                         </Link>
                         <p className="text-xs text-muted-foreground">
-                          {settlement.project.client.name}
+                          {settlement.project.client?.name || "클라이언트 미지정"}
                         </p>
                       </div>
                     </TableCell>
