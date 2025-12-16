@@ -124,23 +124,28 @@ model Project {
 }
 
 model ProjectInfluencer {
-  id             String     @id @default(cuid())
-  fee            Float
-  paymentStatus  String     @default("PENDING")
-  paymentDueDate DateTime?
-  paymentDate    DateTime?
-  proofFile      String?
-  contentStatus  String?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  projectId      String
-  influencerId   String
-  Influencer     Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
-  Project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String     @id @default(cuid())
+  fee              Float
+  paymentStatus    String     @default("PENDING")
+  paymentDueDate   DateTime?
+  paymentDate      DateTime?  // 정산일
+  proofFile        String?
+  contentStatus    String?
+  // 협업 일정 필드
+  shootingDate     DateTime?  // 촬영일
+  draftDeliveryDate DateTime? // 초안 전달일
+  uploadDate       DateTime?  // 결과물 업로드일
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  projectId        String
+  influencerId     String
+  Influencer       Influencer @relation(fields: [influencerId], references: [id], onDelete: Cascade)
+  Project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, influencerId])
   @@index([paymentStatus])
   @@index([paymentDueDate])
+  @@index([shootingDate])
 }
 
 model Transaction {
