@@ -578,7 +578,6 @@ export default function FinancePage() {
 
   const togglePaymentStatus = async (tx: Transaction) => {
     const newStatus = tx.paymentStatus === "COMPLETED" ? "PENDING" : "COMPLETED";
-    const isDeposit = tx.memo?.includes("[선금]");
 
     try {
       const res = await fetch(`/api/transactions/${tx.id}`, {
@@ -591,25 +590,6 @@ export default function FinancePage() {
       });
 
       if (res.ok) {
-        // 선금 미수금이 정산완료되면 잔금(나머지 50%) 자동 추가
-        if (newStatus === "COMPLETED" && isDeposit && tx.type === "REVENUE") {
-          const balanceAmount = tx.amount; // 동일 금액 (원래 금액의 50%였으므로)
-          const balanceMemo = tx.memo?.replace("[선금]", "[잔금]") || "[잔금]";
-
-          await fetch("/api/transactions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              date: new Date().toISOString().split("T")[0],
-              type: "REVENUE",
-              category: tx.category,
-              amount: balanceAmount,
-              paymentStatus: "PENDING", // 잔금은 미수로 생성
-              memo: balanceMemo,
-              clientId: tx.client?.id || null,
-            }),
-          });
-        }
         fetchTransactions();
       }
     } catch (error) {
@@ -1230,28 +1210,21 @@ export default function FinancePage() {
                         {formatCurrency(tx.amount)}
                       </TableCell>
                       <TableCell>
-                        {isDeposit ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => togglePaymentStatus(tx)}
-                            className="h-7 text-xs border-blue-500 text-blue-600 hover:bg-blue-50"
-                            title="정산 완료 시 동일 금액의 잔금이 자동 생성됩니다"
-                          >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            정산 (+잔금)
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => togglePaymentStatus(tx)}
-                            className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                          >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            입금 완료
-                          </Button>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => togglePaymentStatus(tx)}
+                          className={`h-7 text-xs ${
+                            isDeposit
+                              ? "border-blue-500 text-blue-600 hover:bg-blue-50"
+                              : isBalance
+                              ? "border-green-500 text-green-600 hover:bg-green-50"
+                              : "border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                          }`}
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          입금 완료
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

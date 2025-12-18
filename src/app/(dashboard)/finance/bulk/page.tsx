@@ -73,6 +73,7 @@ interface EntryItem {
   advertiser?: string;
   isReceivable?: boolean;
   paymentType?: "NORMAL" | "DEPOSIT" | "BALANCE";
+  clientId?: string; // 고정업체 ID
 }
 
 export default function BulkEntryPage() {
@@ -298,6 +299,7 @@ export default function BulkEntryPage() {
       advertiser: isAdRevenueCategory ? item.advertiser : undefined,
       isReceivable: isRevenueCategory ? revenueOptions.isReceivable : undefined,
       paymentType: isRevenueCategory ? revenueOptions.paymentType : undefined,
+      clientId: isFixedManagementCategory ? item.vendorId : undefined, // 고정업체 ID 저장
     }));
 
     setAllEntries(prev => [...prev, ...newEntries]);
@@ -349,8 +351,10 @@ export default function BulkEntryPage() {
 
     try {
       const date = `${selectedMonth}-01`;
+      let savedCount = 0;
 
       for (const entry of allEntries) {
+        // 선금 저장
         await fetch("/api/transactions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -361,11 +365,32 @@ export default function BulkEntryPage() {
             amount: entry.amount,
             paymentStatus: entry.isReceivable ? "PENDING" : "COMPLETED",
             memo: buildMemo(entry),
+            clientId: entry.clientId || null,
           }),
         });
+        savedCount++;
+
+        // 고정관리업체 + 선금인 경우 잔금도 미수로 자동 생성
+        if (entry.categoryId === "FIXED_MANAGEMENT" && entry.paymentType === "DEPOSIT" && entry.clientId) {
+          const balanceMemo = `[잔금]${entry.memo ? " " + entry.memo : ""}`;
+          await fetch("/api/transactions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date,
+              type: "REVENUE",
+              category: entry.categoryId,
+              amount: entry.amount, // 동일 금액 (이미 50%로 계산됨)
+              paymentStatus: "PENDING", // 잔금은 미수 상태로 생성
+              memo: balanceMemo,
+              clientId: entry.clientId,
+            }),
+          });
+          savedCount++;
+        }
       }
 
-      alert(`${allEntries.length}건이 저장되었습니다.`);
+      alert(`${savedCount}건이 저장되었습니다.`);
       setAllEntries([]);
       router.push("/finance");
     } catch (error) {
