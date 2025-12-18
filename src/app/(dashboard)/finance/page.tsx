@@ -50,6 +50,7 @@ import {
   Megaphone,
   Wallet,
   HandCoins,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -900,9 +901,20 @@ export default function FinancePage() {
                   <ArrowUpRight className="h-5 w-5" />
                   수입
                 </CardTitle>
-                <Badge variant="success" className="text-base px-3">
-                  {formatCurrency(totalRevenue)}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="success" className="text-base px-3">
+                    {formatCurrency(totalRevenue)}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                    onClick={() => setIsAddRevenueDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    추가
+                  </Button>
+                </div>
               </div>
               {revenueByCategory.length > 0 && (
                 <div className="mt-3">
@@ -945,9 +957,20 @@ export default function FinancePage() {
                   <ArrowDownRight className="h-5 w-5" />
                   지출
                 </CardTitle>
-                <Badge variant="destructive" className="text-base px-3">
-                  {formatCurrency(totalExpense)}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="destructive" className="text-base px-3">
+                    {formatCurrency(totalExpense)}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 border-red-500 text-red-600 hover:bg-red-50"
+                    onClick={() => setIsAddExpenseDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    추가
+                  </Button>
+                </div>
               </div>
               {expenseByCategory.length > 0 && (
                 <div className="mt-3">
