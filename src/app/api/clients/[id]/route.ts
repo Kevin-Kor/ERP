@@ -12,6 +12,8 @@ const clientUpdateSchema = z.object({
   industry: z.string().optional(),
   status: z.enum(["ACTIVE", "DORMANT", "TERMINATED"]).optional(),
   memo: z.string().optional(),
+  isFixedVendor: z.boolean().optional(),
+  monthlyFee: z.number().nullable().optional(),
 });
 
 // GET - Get single client with details
