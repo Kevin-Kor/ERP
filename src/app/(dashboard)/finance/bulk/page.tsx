@@ -237,17 +237,46 @@ export default function BulkEntryPage() {
     );
   };
 
-  // 고정업체 선택 시 금액 자동 입력
+  // 고정업체 선택 시 금액 자동 입력 (선금이면 절반)
   const handleVendorSelect = (itemId: string, vendorId: string) => {
     const vendor = fixedVendors.find(v => v.id === vendorId);
     if (vendor) {
-      const amountInMan = vendor.monthlyFee ? (vendor.monthlyFee / 10000).toString() : "";
+      let amountInMan = vendor.monthlyFee ? (vendor.monthlyFee / 10000) : 0;
+      // 선금 선택 시 절반 금액 적용
+      if (revenueOptions.paymentType === "DEPOSIT") {
+        amountInMan = amountInMan / 2;
+      }
       setCurrentAmounts(prev =>
         prev.map(item =>
           item.id === itemId
-            ? { ...item, vendorId, amount: amountInMan, memo: vendor.name }
+            ? { ...item, vendorId, amount: amountInMan.toString(), memo: vendor.name }
             : item
         )
+      );
+    }
+  };
+
+  // 선금/착수금 선택 변경 시 고정업체 금액 재계산
+  const handlePaymentTypeChange = (paymentType: "NORMAL" | "DEPOSIT" | "BALANCE") => {
+    setRevenueOptions(prev => ({ ...prev, paymentType }));
+
+    // 고정관리업체 카테고리이고 업체가 선택된 경우 금액 재계산
+    if (isFixedManagementCategory) {
+      setCurrentAmounts(prev =>
+        prev.map(item => {
+          if (item.vendorId) {
+            const vendor = fixedVendors.find(v => v.id === item.vendorId);
+            if (vendor && vendor.monthlyFee) {
+              let amountInMan = vendor.monthlyFee / 10000;
+              // 선금이면 절반
+              if (paymentType === "DEPOSIT") {
+                amountInMan = amountInMan / 2;
+              }
+              return { ...item, amount: amountInMan.toString() };
+            }
+          }
+          return item;
+        })
       );
     }
   };
@@ -552,19 +581,22 @@ export default function BulkEntryPage() {
                     <Label className="text-sm flex items-center gap-2">
                       <Wallet className="h-4 w-4" />
                       결제 유형
+                      {isFixedManagementCategory && revenueOptions.paymentType === "DEPOSIT" && (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          50% 자동 적용
+                        </Badge>
+                      )}
                     </Label>
                     <Select
                       value={revenueOptions.paymentType}
-                      onValueChange={(value: "NORMAL" | "DEPOSIT" | "BALANCE") =>
-                        setRevenueOptions((prev) => ({ ...prev, paymentType: value }))
-                      }
+                      onValueChange={handlePaymentTypeChange}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="NORMAL">일반</SelectItem>
-                        <SelectItem value="DEPOSIT">선금</SelectItem>
+                        <SelectItem value="DEPOSIT">선금 (고정업체: 50%)</SelectItem>
                         <SelectItem value="BALANCE">착수금/잔금</SelectItem>
                       </SelectContent>
                     </Select>

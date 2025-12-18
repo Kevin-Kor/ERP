@@ -578,6 +578,7 @@ export default function FinancePage() {
 
   const togglePaymentStatus = async (tx: Transaction) => {
     const newStatus = tx.paymentStatus === "COMPLETED" ? "PENDING" : "COMPLETED";
+    const isDeposit = tx.memo?.includes("[선금]");
 
     try {
       const res = await fetch(`/api/transactions/${tx.id}`, {
@@ -590,6 +591,25 @@ export default function FinancePage() {
       });
 
       if (res.ok) {
+        // 선금 미수금이 정산완료되면 잔금(나머지 50%) 자동 추가
+        if (newStatus === "COMPLETED" && isDeposit && tx.type === "REVENUE") {
+          const balanceAmount = tx.amount; // 동일 금액 (원래 금액의 50%였으므로)
+          const balanceMemo = tx.memo?.replace("[선금]", "[잔금]") || "[잔금]";
+
+          await fetch("/api/transactions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: new Date().toISOString().split("T")[0],
+              type: "REVENUE",
+              category: tx.category,
+              amount: balanceAmount,
+              paymentStatus: "PENDING", // 잔금은 미수로 생성
+              memo: balanceMemo,
+              clientId: tx.client?.id || null,
+            }),
+          });
+        }
         fetchTransactions();
       }
     } catch (error) {
@@ -601,9 +621,11 @@ export default function FinancePage() {
   const parsePaymentType = (memo: string | null): { type: string | null; cleanMemo: string } => {
     if (!memo) return { type: null, cleanMemo: "" };
 
-    if (memo.startsWith("[선금]")) {
+    if (memo.includes("[선금]")) {
       return { type: "선금", cleanMemo: memo.replace("[선금]", "").trim() };
-    } else if (memo.startsWith("[착수금]")) {
+    } else if (memo.includes("[잔금]")) {
+      return { type: "잔금", cleanMemo: memo.replace("[잔금]", "").trim() };
+    } else if (memo.includes("[착수금]")) {
       return { type: "착수금", cleanMemo: memo.replace("[착수금]", "").trim() };
     }
 
@@ -644,6 +666,8 @@ export default function FinancePage() {
                       className={`text-xs px-1.5 shrink-0 ${
                         paymentType === "선금"
                           ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : paymentType === "잔금"
+                          ? "bg-green-50 text-green-700 border-green-200"
                           : "bg-purple-50 text-purple-700 border-purple-200"
                       }`}
                     >
@@ -1161,18 +1185,30 @@ export default function FinancePage() {
                 {filteredReceivables.map((tx) => {
                   const advertiser = extractAdvertiserInfo(tx.memo);
                   const isAdRevenue = tx.category === "AD_REVENUE";
+                  const isDeposit = tx.memo?.includes("[선금]");
+                  const isBalance = tx.memo?.includes("[잔금]");
                   return (
                     <TableRow
                       key={tx.id}
-                      className={`group ${isAdRevenue ? 'bg-pink-50/50 dark:bg-pink-950/10' : ''}`}
+                      className={`group ${isAdRevenue ? 'bg-pink-50/50 dark:bg-pink-950/10' : ''} ${isDeposit ? 'bg-blue-50/50 dark:bg-blue-950/10' : ''} ${isBalance ? 'bg-green-50/50 dark:bg-green-950/10' : ''}`}
                     >
                       <TableCell className="text-muted-foreground text-sm">
                         {new Date(tx.date).getDate()}일
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
                           {isAdRevenue && <Megaphone className="h-3 w-3 text-pink-600" />}
                           <span className="text-sm">{getCategoryLabel(tx.type, tx.category)}</span>
+                          {isDeposit && (
+                            <Badge variant="outline" className="text-xs bg-blue-100 text-blue-700 border-blue-300">
+                              선금
+                            </Badge>
+                          )}
+                          {isBalance && (
+                            <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-300">
+                              잔금
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="text-sm">
@@ -1188,21 +1224,34 @@ export default function FinancePage() {
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
-                        {tx.memo?.replace(/\[광고(?:업체|주)\s*:\s*[^\]]+\]\s*/, '') || "-"}
+                        {tx.memo?.replace(/\[(선금|잔금|착수금)\]\s*/g, '').replace(/\[광고(?:업체|주)\s*:\s*[^\]]+\]\s*/, '') || "-"}
                       </TableCell>
                       <TableCell className="text-right font-medium text-amber-600">
                         {formatCurrency(tx.amount)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => togglePaymentStatus(tx)}
-                          className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                        >
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          입금 완료
-                        </Button>
+                        {isDeposit ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => togglePaymentStatus(tx)}
+                            className="h-7 text-xs border-blue-500 text-blue-600 hover:bg-blue-50"
+                            title="정산 완료 시 동일 금액의 잔금이 자동 생성됩니다"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            정산 (+잔금)
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => togglePaymentStatus(tx)}
+                            className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            입금 완료
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
