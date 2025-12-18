@@ -40,6 +40,7 @@ import {
   Loader2,
   Banknote,
   ListTodo,
+  Megaphone,
 } from "lucide-react";
 import { formatCurrency, formatCurrencyCompact, formatDate, getDaysSince } from "@/lib/utils";
 import Link from "next/link";
@@ -152,6 +153,30 @@ export default function DashboardPage() {
   const pendingTodoCount = todoData?.members.reduce((total, member) => {
     return total + Object.values(member.tasks).flat().filter(task => !task.completed).length;
   }, 0) || 0;
+
+  // 광고업체 정보 추출 헬퍼 함수
+  const extractAdvertiserInfo = (memo: string | null): string | null => {
+    if (!memo) return null;
+    // [광고업체: XXX] 또는 [광고주:XXX] 패턴 찾기
+    const match = memo.match(/\[광고(?:업체|주)\s*:\s*([^\]]+)\]/);
+    return match ? match[1].trim() : null;
+  };
+
+  // 카테고리 라벨 가져오기
+  const getCategoryLabel = (category: string): string => {
+    const categories = [
+      { value: "FIXED_MANAGEMENT", label: "고정 관리업체" },
+      { value: "PROJECT_MANAGEMENT", label: "건별 관리업체" },
+      { value: "AD_REVENUE", label: "광고비 수입" },
+      { value: "PLATFORM_REVENUE", label: "플랫폼 수입" },
+      { value: "CAMPAIGN_FEE", label: "캠페인 대행료" },
+      { value: "CONTENT_FEE", label: "콘텐츠 제작비" },
+      { value: "CONSULTING", label: "컨설팅/기타" },
+      { value: "OTHER_REVENUE", label: "기타 수입" },
+    ];
+    const found = categories.find((c) => c.value === category);
+    return found?.label || category;
+  };
 
   // 미수 관리 상태
   const [deletingReceivableId, setDeletingReceivableId] = useState<string | null>(null);
@@ -612,68 +637,94 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>일자</TableHead>
-                  <TableHead>클라이언트</TableHead>
+                  <TableHead>카테고리</TableHead>
+                  <TableHead>클라이언트/광고업체</TableHead>
                   <TableHead>메모</TableHead>
                   <TableHead className="text-right">금액</TableHead>
                   <TableHead className="w-[120px]">작업</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.actions.unpaidTransactions.map((tx) => (
-                  <TableRow key={tx.id}>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(tx.date)}
-                    </TableCell>
-                    <TableCell>
-                      {tx.client ? (
-                        <Link
-                          href={`/clients/${tx.client.id}`}
-                          className="font-medium hover:text-primary"
-                        >
-                          {tx.client?.name || "클라이언트 미지정"}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                      {tx.memo || tx.project?.name || "-"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-amber-600">
-                      {formatCurrency(tx.amount)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                          onClick={() => handleMarkCompleted(tx.id)}
-                          disabled={markingCompletedId === tx.id}
-                          title="입금 완료"
-                        >
-                          {markingCompletedId === tx.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                {data.actions.unpaidTransactions.map((tx) => {
+                  const advertiser = extractAdvertiserInfo(tx.memo);
+                  const isAdRevenue = tx.category === "AD_REVENUE";
+                  return (
+                    <TableRow
+                      key={tx.id}
+                      className={isAdRevenue ? 'bg-pink-50/50 dark:bg-pink-950/10' : ''}
+                    >
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(tx.date)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {isAdRevenue && <Megaphone className="h-3 w-3 text-pink-600" />}
+                          <Badge
+                            variant={isAdRevenue ? "default" : "outline"}
+                            className={`text-xs ${isAdRevenue ? 'bg-pink-100 text-pink-700 border-pink-300' : ''}`}
+                          >
+                            {getCategoryLabel(tx.category)}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          {tx.client ? (
+                            <Link
+                              href={`/clients/${tx.client.id}`}
+                              className="font-medium hover:text-primary text-sm"
+                            >
+                              {tx.client.name}
+                            </Link>
                           ) : (
-                            <CheckCircle className="h-4 w-4" />
+                            <span className="text-muted-foreground text-sm">-</span>
                           )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-red-50"
-                          onClick={() => {
-                            setDeletingReceivableId(tx.id);
-                            setIsDeleteDialogOpen(true);
-                          }}
-                          title="삭제"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {advertiser && (
+                            <Badge variant="outline" className="text-xs w-fit bg-pink-100 text-pink-700 border-pink-300">
+                              {advertiser}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                        {tx.memo?.replace(/\[광고(?:업체|주)\s*:\s*[^\]]+\]\s*/, '') || tx.project?.name || "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-amber-600">
+                        {formatCurrency(tx.amount)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            onClick={() => handleMarkCompleted(tx.id)}
+                            disabled={markingCompletedId === tx.id}
+                            title="입금 완료"
+                          >
+                            {markingCompletedId === tx.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-red-50"
+                            onClick={() => {
+                              setDeletingReceivableId(tx.id);
+                              setIsDeleteDialogOpen(true);
+                            }}
+                            title="삭제"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
