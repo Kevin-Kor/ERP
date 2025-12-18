@@ -76,21 +76,19 @@ export function TransactionForm({ initialData, mode }: TransactionFormProps) {
     const selectedProjectId = watch("projectId");
     const selectedInfluencerId = watch("influencerId");
 
+    // Fetch projects and influencers once on mount
     useEffect(() => {
         async function fetchData() {
             try {
-                const [clientsRes, projectsRes, influencersRes] = await Promise.all([
-                    fetch("/api/clients?limit=100"),
+                const [projectsRes, influencersRes] = await Promise.all([
                     fetch("/api/projects?limit=100"),
                     fetch("/api/influencers?limit=100"),
                 ]);
 
-                const clientsData = await clientsRes.json();
                 const projectsData = await projectsRes.json();
                 // Influencers API might not exist yet, handle gracefully
                 const influencersData = influencersRes.ok ? await influencersRes.json() : { influencers: [] };
 
-                setClients(clientsData.clients || []);
                 setProjects(projectsData.projects || []);
                 setInfluencers(influencersData.influencers || []);
             } catch (error) {
@@ -99,6 +97,26 @@ export function TransactionForm({ initialData, mode }: TransactionFormProps) {
         }
         fetchData();
     }, []);
+
+    // Fetch clients based on category selection
+    useEffect(() => {
+        async function fetchClients() {
+            try {
+                // For FIXED_MANAGEMENT category, only show fixed vendors
+                const isFixedManagement = category === "FIXED_MANAGEMENT";
+                const queryParams = isFixedManagement
+                    ? "isFixedVendor=true&status=ACTIVE&limit=100"
+                    : "status=ACTIVE&limit=100";
+
+                const clientsRes = await fetch(`/api/clients?${queryParams}`);
+                const clientsData = await clientsRes.json();
+                setClients(clientsData.clients || []);
+            } catch (error) {
+                console.error("Failed to fetch clients:", error);
+            }
+        }
+        fetchClients();
+    }, [category]);
 
     async function onSubmit(data: TransactionFormData) {
         setIsSubmitting(true);

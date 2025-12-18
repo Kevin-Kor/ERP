@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -39,20 +40,33 @@ export function QuickTransactionModal({ open, onOpenChange }: QuickTransactionMo
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [memo, setMemo] = useState("");
+  const [advertiser, setAdvertiser] = useState(""); // 광고업체명 (AD_REVENUE용)
+  const [isReceivable, setIsReceivable] = useState(false); // 미수 여부 (REVENUE용)
 
   const resetForm = () => {
     setCategory("");
     setAmount("");
     setDate(new Date().toISOString().split("T")[0]);
     setMemo("");
+    setAdvertiser("");
+    setIsReceivable(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!category || !amount) {
       return;
     }
+
+    // AD_REVENUE 카테고리의 경우 광고업체명 포함하여 메모 생성
+    let finalMemo = memo;
+    if (type === "REVENUE" && category === "AD_REVENUE" && advertiser) {
+      finalMemo = `[광고업체: ${advertiser}]${memo ? " " + memo : ""}`;
+    }
+
+    // 수입의 경우 미수 여부에 따라 paymentStatus 결정
+    const paymentStatus = type === "REVENUE" && isReceivable ? "PENDING" : "COMPLETED";
 
     setIsSubmitting(true);
     try {
@@ -64,8 +78,8 @@ export function QuickTransactionModal({ open, onOpenChange }: QuickTransactionMo
           type,
           category,
           amount: parseFloat(amount),
-          paymentStatus: "COMPLETED",
-          memo: memo || null,
+          paymentStatus,
+          memo: finalMemo || null,
         }),
       });
 
@@ -153,6 +167,19 @@ export function QuickTransactionModal({ open, onOpenChange }: QuickTransactionMo
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 광고수입 선택 시 광고업체 입력 필드 표시 */}
+              {category === "AD_REVENUE" && (
+                <div className="space-y-2">
+                  <Label>광고항목(업체) *</Label>
+                  <Input
+                    type="text"
+                    placeholder="광고업체명을 입력하세요"
+                    value={advertiser}
+                    onChange={(e) => setAdvertiser(e.target.value)}
+                  />
+                </div>
+              )}
             </TabsContent>
 
             <div className="space-y-2">
@@ -198,6 +225,20 @@ export function QuickTransactionModal({ open, onOpenChange }: QuickTransactionMo
                 rows={2}
               />
             </div>
+
+            {/* 수익 입력 시 미수 체크박스 표시 */}
+            {type === "REVENUE" && (
+              <div className="flex items-center space-x-2 p-3 border rounded-lg bg-amber-50 border-amber-200">
+                <Checkbox
+                  id="isReceivable"
+                  checked={isReceivable}
+                  onCheckedChange={(checked) => setIsReceivable(checked as boolean)}
+                />
+                <Label htmlFor="isReceivable" className="cursor-pointer text-amber-800">
+                  미수 (아직 입금되지 않음)
+                </Label>
+              </div>
+            )}
 
             <div className="flex gap-2 pt-4">
               <Button

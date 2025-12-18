@@ -47,6 +47,9 @@ import {
   ChevronRight,
   Building2,
   Pencil,
+  Megaphone,
+  Wallet,
+  HandCoins,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -137,7 +140,9 @@ export default function FinancePage() {
     isManualAmount: false,
     category: "CAMPAIGN_FEE",
     memo: "",
+    advertiser: "", // 광고업체명 (AD_REVENUE 카테고리용)
     isReceivable: false, // 미수 여부
+    paymentType: "NORMAL" as "NORMAL" | "DEPOSIT" | "BALANCE", // 결제 유형: 선금/착수금/일반
   });
 
   // Add expense modal state
@@ -271,6 +276,21 @@ export default function FinancePage() {
       return;
     }
 
+    // 메모 생성 로직
+    let finalMemo = newRevenueForm.memo;
+
+    // 결제 유형 prefix 추가
+    if (newRevenueForm.paymentType === "DEPOSIT") {
+      finalMemo = `[선금]${finalMemo ? " " + finalMemo : ""}`;
+    } else if (newRevenueForm.paymentType === "BALANCE") {
+      finalMemo = `[착수금]${finalMemo ? " " + finalMemo : ""}`;
+    }
+
+    // AD_REVENUE 카테고리의 경우 광고업체명 포함
+    if (newRevenueForm.category === "AD_REVENUE" && newRevenueForm.advertiser) {
+      finalMemo = `[광고업체: ${newRevenueForm.advertiser}]${finalMemo ? " " + finalMemo : ""}`;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -282,7 +302,7 @@ export default function FinancePage() {
           category: newRevenueForm.category,
           amount: newRevenueForm.amount,
           paymentStatus: newRevenueForm.isReceivable ? "PENDING" : "COMPLETED",
-          memo: newRevenueForm.memo || null,
+          memo: finalMemo || null,
           clientId: newRevenueForm.clientId,
         }),
       });
@@ -297,7 +317,9 @@ export default function FinancePage() {
           isManualAmount: false,
           category: "CAMPAIGN_FEE",
           memo: "",
+          advertiser: "",
           isReceivable: false,
+          paymentType: "NORMAL" as "NORMAL" | "DEPOSIT" | "BALANCE",
         });
         setSelectedVendor("");
         fetchTransactions();
@@ -392,6 +414,54 @@ export default function FinancePage() {
   );
 
   const totalReceivables = receivables.reduce((sum, t) => sum + t.amount, 0);
+
+  // 미수금 카테고리 필터
+  const [selectedReceivableCategory, setSelectedReceivableCategory] = useState<string | null>(null);
+
+  // 필터된 미수금
+  const filteredReceivables = useMemo(
+    () =>
+      selectedReceivableCategory
+        ? receivables.filter((t) => t.category === selectedReceivableCategory)
+        : receivables,
+    [receivables, selectedReceivableCategory]
+  );
+
+  // 미수금 카테고리별 집계
+  const receivablesByCategory = useMemo(() => {
+    const grouped: Record<string, { label: string; total: number; count: number }> = {};
+    receivables.forEach((t) => {
+      if (!grouped[t.category]) {
+        const cat = REVENUE_CATEGORIES.find((c) => c.value === t.category);
+        grouped[t.category] = { label: cat?.label || t.category, total: 0, count: 0 };
+      }
+      grouped[t.category].total += t.amount;
+      grouped[t.category].count += 1;
+    });
+    return Object.entries(grouped).sort((a, b) => b[1].total - a[1].total);
+  }, [receivables]);
+
+  // 선금/착수금 파싱 및 집계
+  const paymentTypeBreakdown = useMemo(() => {
+    const deposit = revenueTransactions.filter(t => t.memo?.includes('[선금]'));
+    const downPayment = revenueTransactions.filter(t => t.memo?.includes('[착수금]'));
+    const depositTotal = deposit.reduce((sum, t) => sum + t.amount, 0);
+    const downPaymentTotal = downPayment.reduce((sum, t) => sum + t.amount, 0);
+
+    return {
+      deposit: { count: deposit.length, total: depositTotal, transactions: deposit },
+      downPayment: { count: downPayment.length, total: downPaymentTotal, transactions: downPayment },
+      hasData: deposit.length > 0 || downPayment.length > 0,
+    };
+  }, [revenueTransactions]);
+
+  // 광고업체 정보 추출 헬퍼 함수
+  const extractAdvertiserInfo = (memo: string | null): string | null => {
+    if (!memo) return null;
+    // [광고업체: XXX] 또는 [광고주:XXX] 패턴 찾기
+    const match = memo.match(/\[광고(?:업체|주)\s*:\s*([^\]]+)\]/);
+    return match ? match[1].trim() : null;
+  };
 
   const totalRevenue = revenueTransactions.reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -526,6 +596,19 @@ export default function FinancePage() {
     }
   };
 
+  // 결제 유형 파싱 헬퍼 함수
+  const parsePaymentType = (memo: string | null): { type: string | null; cleanMemo: string } => {
+    if (!memo) return { type: null, cleanMemo: "" };
+
+    if (memo.startsWith("[선금]")) {
+      return { type: "선금", cleanMemo: memo.replace("[선금]", "").trim() };
+    } else if (memo.startsWith("[착수금]")) {
+      return { type: "착수금", cleanMemo: memo.replace("[착수금]", "").trim() };
+    }
+
+    return { type: null, cleanMemo: memo };
+  };
+
   // 거래 테이블 렌더링 컴포넌트
   const TransactionTable = ({
     items,
@@ -546,59 +629,76 @@ export default function FinancePage() {
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((tx) => (
-          <TableRow key={tx.id} className="group">
-            <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
-            <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
-            <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
-              {tx.memo || tx.client?.name || tx.project?.name || "-"}
-            </TableCell>
-            <TableCell
-              className={`text-right font-medium ${
-                type === "REVENUE" ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
-              {formatCurrency(tx.amount)}
-            </TableCell>
-            <TableCell>
-              <button onClick={() => togglePaymentStatus(tx)} className="hover:opacity-70 transition-opacity">
-                {tx.paymentStatus === "COMPLETED" ? (
-                  <Badge variant="success" className="cursor-pointer text-xs px-1.5">
-                    완료
-                  </Badge>
-                ) : (
-                  <Badge variant="warning" className="cursor-pointer text-xs px-1.5">
-                    대기
-                  </Badge>
-                )}
-              </button>
-            </TableCell>
-            <TableCell>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => openEditDialog(tx)}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    수정
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => openDeleteDialog(tx.id)} className="text-destructive">
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    삭제
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </TableCell>
-          </TableRow>
-        ))}
+        {items.map((tx) => {
+          const { type: paymentType, cleanMemo } = parsePaymentType(tx.memo);
+          return (
+            <TableRow key={tx.id} className="group">
+              <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
+              <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
+              <TableCell className="text-muted-foreground text-sm max-w-[150px]">
+                <div className="flex items-center gap-1">
+                  {paymentType && (
+                    <Badge
+                      variant="outline"
+                      className={`text-xs px-1.5 shrink-0 ${
+                        paymentType === "선금"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-purple-50 text-purple-700 border-purple-200"
+                      }`}
+                    >
+                      {paymentType}
+                    </Badge>
+                  )}
+                  <span className="truncate">{cleanMemo || tx.client?.name || tx.project?.name || "-"}</span>
+                </div>
+              </TableCell>
+              <TableCell
+                className={`text-right font-medium ${
+                  type === "REVENUE" ? "text-emerald-600" : "text-red-600"
+                }`}
+              >
+                {formatCurrency(tx.amount)}
+              </TableCell>
+              <TableCell>
+                <button onClick={() => togglePaymentStatus(tx)} className="hover:opacity-70 transition-opacity">
+                  {tx.paymentStatus === "COMPLETED" ? (
+                    <Badge variant="success" className="cursor-pointer text-xs px-1.5">
+                      완료
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="cursor-pointer text-xs px-1.5">
+                      대기
+                    </Badge>
+                  )}
+                </button>
+              </TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => openEditDialog(tx)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      수정
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => openDeleteDialog(tx.id)} className="text-destructive">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      삭제
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
+            </TableRow>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -884,7 +984,104 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* 미수금 관리 섹션 */}
+      {/* 선금/착수금 추적 섹션 */}
+      {paymentTypeBreakdown.hasData && (
+        <Card className="border-2 border-blue-400">
+          <CardHeader className="border-b pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2 text-blue-600">
+                <Wallet className="h-5 w-5" />
+                선금/착수금 추적
+              </CardTitle>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              {currentMonthLabel} 선금 및 착수금 현황
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            {/* 요약 카드 */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border-2 border-blue-200 bg-blue-50/50 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <HandCoins className="h-5 w-5 text-blue-600" />
+                    <h3 className="font-medium text-blue-900">선금</h3>
+                  </div>
+                  <Badge variant="outline" className="bg-blue-100">
+                    {paymentTypeBreakdown.deposit.count}건
+                  </Badge>
+                </div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {formatCurrency(paymentTypeBreakdown.deposit.total)}
+                </div>
+              </div>
+
+              <div className="rounded-lg border-2 border-purple-200 bg-purple-50/50 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5 text-purple-600" />
+                    <h3 className="font-medium text-purple-900">착수금/잔금</h3>
+                  </div>
+                  <Badge variant="outline" className="bg-purple-100">
+                    {paymentTypeBreakdown.downPayment.count}건
+                  </Badge>
+                </div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {formatCurrency(paymentTypeBreakdown.downPayment.total)}
+                </div>
+              </div>
+            </div>
+
+            {/* 상세 내역 */}
+            {(paymentTypeBreakdown.deposit.count > 0 || paymentTypeBreakdown.downPayment.count > 0) && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-muted-foreground">상세 내역</h4>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[80px]">일자</TableHead>
+                      <TableHead className="w-[80px]">유형</TableHead>
+                      <TableHead>클라이언트</TableHead>
+                      <TableHead>메모</TableHead>
+                      <TableHead className="text-right">금액</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...paymentTypeBreakdown.deposit.transactions, ...paymentTypeBreakdown.downPayment.transactions]
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .map((tx) => {
+                        const isDeposit = tx.memo?.includes('[선금]');
+                        return (
+                          <TableRow key={tx.id}>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {new Date(tx.date).getDate()}일
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={isDeposit ? "default" : "secondary"} className="text-xs">
+                                {isDeposit ? '선금' : '착수금'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {tx.client?.name || "-"}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                              {tx.memo?.replace(/\[(선금|착수금)\]\s*/, '') || "-"}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatCurrency(tx.amount)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 미수금 관리 섹션 - Enhanced */}
       {receivables.length > 0 && (
         <Card className="border-2 border-amber-400">
           <CardHeader className="border-b pb-4">
@@ -894,10 +1091,35 @@ export default function FinancePage() {
                 미수금 관리
               </CardTitle>
               <Badge className="text-base px-3 bg-amber-500 hover:bg-amber-600">
-                {formatCurrency(totalReceivables)}
+                {formatCurrency(selectedReceivableCategory ? filteredReceivables.reduce((sum, t) => sum + t.amount, 0) : totalReceivables)}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">아직 입금되지 않은 수입 {receivables.length}건</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              아직 입금되지 않은 수입 {selectedReceivableCategory ? filteredReceivables.length : receivables.length}건
+            </p>
+            {/* 카테고리 필터 */}
+            {receivablesByCategory.length > 0 && (
+              <div className="mt-3">
+                <Select
+                  value={selectedReceivableCategory || "all"}
+                  onValueChange={(value) => setSelectedReceivableCategory(value === "all" ? null : value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="카테고리별 필터" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      전체 ({formatCurrency(totalReceivables)})
+                    </SelectItem>
+                    {receivablesByCategory.map(([category, data]) => (
+                      <SelectItem key={category} value={category}>
+                        {data.label} ({formatCurrency(data.total)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -905,33 +1127,63 @@ export default function FinancePage() {
                 <TableRow>
                   <TableHead className="w-[80px]">일자</TableHead>
                   <TableHead>카테고리</TableHead>
-                  <TableHead>메모/업체</TableHead>
+                  <TableHead>클라이언트</TableHead>
+                  <TableHead>광고업체</TableHead>
+                  <TableHead>메모</TableHead>
                   <TableHead className="text-right">금액</TableHead>
-                  <TableHead className="w-[100px]">상태 변경</TableHead>
+                  <TableHead className="w-[100px]">작업</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {receivables.map((tx) => (
-                  <TableRow key={tx.id} className="group">
-                    <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
-                    <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
-                      {tx.memo || tx.client?.name || "-"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-amber-600">{formatCurrency(tx.amount)}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => togglePaymentStatus(tx)}
-                        className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                      >
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        입금 완료
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filteredReceivables.map((tx) => {
+                  const advertiser = extractAdvertiserInfo(tx.memo);
+                  const isAdRevenue = tx.category === "AD_REVENUE";
+                  return (
+                    <TableRow
+                      key={tx.id}
+                      className={`group ${isAdRevenue ? 'bg-pink-50/50 dark:bg-pink-950/10' : ''}`}
+                    >
+                      <TableCell className="text-muted-foreground text-sm">
+                        {new Date(tx.date).getDate()}일
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {isAdRevenue && <Megaphone className="h-3 w-3 text-pink-600" />}
+                          <span className="text-sm">{getCategoryLabel(tx.type, tx.category)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {tx.client?.name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {advertiser ? (
+                          <Badge variant="outline" className="text-xs bg-pink-100 text-pink-700 border-pink-300">
+                            {advertiser}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm max-w-[150px] truncate">
+                        {tx.memo?.replace(/\[광고(?:업체|주)\s*:\s*[^\]]+\]\s*/, '') || "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-amber-600">
+                        {formatCurrency(tx.amount)}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => togglePaymentStatus(tx)}
+                          className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          입금 완료
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -1089,6 +1341,19 @@ export default function FinancePage() {
               </div>
             </div>
 
+            {/* 광고수입 선택 시 광고업체 입력 필드 표시 */}
+            {newRevenueForm.category === "AD_REVENUE" && (
+              <div className="space-y-2">
+                <Label>광고항목(업체) *</Label>
+                <Input
+                  type="text"
+                  placeholder="광고업체명을 입력하세요"
+                  value={newRevenueForm.advertiser}
+                  onChange={(e) => setNewRevenueForm({ ...newRevenueForm, advertiser: e.target.value })}
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
@@ -1169,6 +1434,28 @@ export default function FinancePage() {
               <Label htmlFor="isReceivable" className="cursor-pointer text-amber-800">
                 미수 (아직 입금되지 않음)
               </Label>
+            </div>
+
+            <div className="space-y-2">
+              <Label>결제 유형</Label>
+              <Select
+                value={newRevenueForm.paymentType}
+                onValueChange={(value: "NORMAL" | "DEPOSIT" | "BALANCE") =>
+                  setNewRevenueForm({ ...newRevenueForm, paymentType: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NORMAL">일반</SelectItem>
+                  <SelectItem value="DEPOSIT">선금</SelectItem>
+                  <SelectItem value="BALANCE">착수금/잔금</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                선금 또는 착수금 선택 시 메모에 자동으로 표시됩니다
+              </p>
             </div>
 
             <div className="space-y-2">
