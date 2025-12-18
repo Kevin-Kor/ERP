@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,6 +26,9 @@ import {
   Receipt,
   Calculator,
   Building2,
+  Megaphone,
+  Clock,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/utils";
@@ -65,6 +70,9 @@ interface EntryItem {
   type: "EXPENSE" | "REVENUE";
   amount: number;
   memo: string;
+  advertiser?: string;
+  isReceivable?: boolean;
+  paymentType?: "NORMAL" | "DEPOSIT" | "BALANCE";
 }
 
 export default function BulkEntryPage() {
@@ -76,9 +84,21 @@ export default function BulkEntryPage() {
   });
 
   // 현재 입력 중인 금액들 (선택된 카테고리)
-  const [currentAmounts, setCurrentAmounts] = useState<{ id: string; amount: string; memo: string; vendorId?: string }[]>([
+  const [currentAmounts, setCurrentAmounts] = useState<{
+    id: string;
+    amount: string;
+    memo: string;
+    vendorId?: string;
+    advertiser?: string;
+  }[]>([
     { id: crypto.randomUUID(), amount: "", memo: "" }
   ]);
+
+  // 수입 옵션 상태 (미수, 결제 유형)
+  const [revenueOptions, setRevenueOptions] = useState({
+    isReceivable: false,
+    paymentType: "NORMAL" as "NORMAL" | "DEPOSIT" | "BALANCE",
+  });
 
   // 모든 저장된 항목들
   const [allEntries, setAllEntries] = useState<EntryItem[]>([]);
@@ -107,6 +127,21 @@ export default function BulkEntryPage() {
 
   // 고정 관리업체 카테고리인지 확인
   const isFixedManagementCategory = selectedCategory === "FIXED_MANAGEMENT";
+
+  // 광고수입 카테고리인지 확인
+  const isAdRevenueCategory = selectedCategory === "AD_REVENUE";
+
+  // 수입 카테고리인지 확인
+  const isRevenueCategory = REVENUE_CATEGORIES.some(cat => cat.id === selectedCategory);
+
+  // 카테고리 변경 시 옵션 리셋
+  useEffect(() => {
+    setRevenueOptions({
+      isReceivable: false,
+      paymentType: "NORMAL",
+    });
+    setCurrentAmounts([{ id: crypto.randomUUID(), amount: "", memo: "" }]);
+  }, [selectedCategory]);
 
   // 월 옵션 생성 (최근 12개월)
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -162,7 +197,7 @@ export default function BulkEntryPage() {
     const newId = crypto.randomUUID();
     setCurrentAmounts(prev => [
       ...prev,
-      { id: newId, amount: "", memo: "" }
+      { id: newId, amount: "", memo: "", advertiser: "" }
     ]);
     // 새 필드에 포커스
     setTimeout(() => {
@@ -231,15 +266,42 @@ export default function BulkEntryPage() {
       type: selectedCategoryInfo.type,
       amount: parseFloat(item.amount) * 10000, // 만원 -> 원 변환
       memo: item.memo,
+      advertiser: isAdRevenueCategory ? item.advertiser : undefined,
+      isReceivable: isRevenueCategory ? revenueOptions.isReceivable : undefined,
+      paymentType: isRevenueCategory ? revenueOptions.paymentType : undefined,
     }));
 
     setAllEntries(prev => [...prev, ...newEntries]);
     setCurrentAmounts([{ id: crypto.randomUUID(), amount: "", memo: "" }]);
+    // 수입 옵션 리셋
+    setRevenueOptions({
+      isReceivable: false,
+      paymentType: "NORMAL",
+    });
   };
 
   // 항목 삭제
   const removeEntry = (id: string) => {
     setAllEntries(prev => prev.filter(entry => entry.id !== id));
+  };
+
+  // 메모 생성 헬퍼 함수
+  const buildMemo = (entry: EntryItem): string | null => {
+    let memo = entry.memo || "";
+
+    // 결제 유형 prefix 추가
+    if (entry.paymentType === "DEPOSIT") {
+      memo = `[선금]${memo ? " " + memo : ""}`;
+    } else if (entry.paymentType === "BALANCE") {
+      memo = `[착수금]${memo ? " " + memo : ""}`;
+    }
+
+    // 광고업체 정보 추가
+    if (entry.categoryId === "AD_REVENUE" && entry.advertiser) {
+      memo = `[광고업체: ${entry.advertiser}]${memo ? " " + memo : ""}`;
+    }
+
+    return memo || null;
   };
 
   // 전체 저장
@@ -268,8 +330,8 @@ export default function BulkEntryPage() {
             type: entry.type,
             category: entry.categoryId,
             amount: entry.amount,
-            paymentStatus: "COMPLETED",
-            memo: entry.memo || null,
+            paymentStatus: entry.isReceivable ? "PENDING" : "COMPLETED",
+            memo: buildMemo(entry),
           }),
         });
       }
@@ -363,84 +425,96 @@ export default function BulkEntryPage() {
                 {isFixedManagementCategory ? "고정업체 선택" : "금액"}
               </label>
               {currentAmounts.map((item, index) => (
-                <div key={item.id} className="flex gap-2">
-                  {/* 고정 관리업체일 때 업체 선택 드롭다운 */}
-                  {isFixedManagementCategory && (
-                    <Select
-                      value={item.vendorId || ""}
-                      onValueChange={(value) => handleVendorSelect(item.id, value)}
-                    >
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="업체 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {fixedVendors.length === 0 ? (
-                          <div className="px-2 py-4 text-center text-sm text-muted-foreground">
-                            등록된 고정업체가 없습니다
-                          </div>
-                        ) : (
-                          fixedVendors.map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.id}>
-                              <div className="flex items-center gap-2">
-                                <Building2 className="h-3 w-3" />
-                                {vendor.name}
-                                {vendor.monthlyFee && (
-                                  <span className="text-muted-foreground text-xs">
-                                    ({(vendor.monthlyFee / 10000).toFixed(0)}만원)
-                                  </span>
-                                )}
-                              </div>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  <div className="flex-1 relative">
+                <div key={item.id} className="space-y-2">
+                  <div className="flex gap-2">
+                    {/* 고정 관리업체일 때 업체 선택 드롭다운 */}
+                    {isFixedManagementCategory && (
+                      <Select
+                        value={item.vendorId || ""}
+                        onValueChange={(value) => handleVendorSelect(item.id, value)}
+                      >
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="업체 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {fixedVendors.length === 0 ? (
+                            <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+                              등록된 고정업체가 없습니다
+                            </div>
+                          ) : (
+                            fixedVendors.map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-3 w-3" />
+                                  {vendor.name}
+                                  {vendor.monthlyFee && (
+                                    <span className="text-muted-foreground text-xs">
+                                      ({(vendor.monthlyFee / 10000).toFixed(0)}만원)
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {/* 광고수입일 때 광고업체 입력 */}
+                    {isAdRevenueCategory && (
+                      <Input
+                        type="text"
+                        placeholder="광고업체명"
+                        value={item.advertiser || ""}
+                        onChange={(e) => updateAmount(item.id, "advertiser", e.target.value)}
+                        className="w-[140px]"
+                      />
+                    )}
+                    <div className="flex-1 relative">
+                      <Input
+                        ref={(el) => { amountInputRefs.current[item.id] = el; }}
+                        type="number"
+                        placeholder="금액"
+                        value={item.amount}
+                        onChange={(e) => updateAmount(item.id, "amount", e.target.value)}
+                        onKeyDown={(e) => handleAmountKeyDown(e, item.id, index)}
+                        className="pr-12 text-right font-medium"
+                        autoFocus={index === 0 && !isFixedManagementCategory && !isAdRevenueCategory}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                        만원
+                      </span>
+                    </div>
                     <Input
-                      ref={(el) => { amountInputRefs.current[item.id] = el; }}
-                      type="number"
-                      placeholder="금액"
-                      value={item.amount}
-                      onChange={(e) => updateAmount(item.id, "amount", e.target.value)}
-                      onKeyDown={(e) => handleAmountKeyDown(e, item.id, index)}
-                      className="pr-12 text-right font-medium"
-                      autoFocus={index === 0 && !isFixedManagementCategory}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                      만원
-                    </span>
-                  </div>
-                  <Input
-                    type="text"
-                    placeholder="메모 (선택)"
-                    value={item.memo}
-                    onChange={(e) => updateAmount(item.id, "memo", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        if (index === currentAmounts.length - 1) {
-                          addAmountField();
-                        } else {
-                          const nextItem = currentAmounts[index + 1];
-                          if (nextItem) {
-                            amountInputRefs.current[nextItem.id]?.focus();
+                      type="text"
+                      placeholder="메모 (선택)"
+                      value={item.memo}
+                      onChange={(e) => updateAmount(item.id, "memo", e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (index === currentAmounts.length - 1) {
+                            addAmountField();
+                          } else {
+                            const nextItem = currentAmounts[index + 1];
+                            if (nextItem) {
+                              amountInputRefs.current[nextItem.id]?.focus();
+                            }
                           }
                         }
-                      }
-                    }}
-                    className="w-32"
-                  />
-                  {currentAmounts.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => removeAmountField(item.id)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
+                      }}
+                      className="w-32"
+                    />
+                    {currentAmounts.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeAmountField(item.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
               
@@ -454,6 +528,52 @@ export default function BulkEntryPage() {
                 <Plus className="h-4 w-4" />
                 금액 추가
               </Button>
+
+              {/* 수입 카테고리일 때 미수/결제유형 옵션 */}
+              {isRevenueCategory && (
+                <div className="space-y-3 pt-3 border-t">
+                  {/* 미수 체크박스 */}
+                  <div className="flex items-center space-x-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <Checkbox
+                      id="isReceivable"
+                      checked={revenueOptions.isReceivable}
+                      onCheckedChange={(checked) =>
+                        setRevenueOptions((prev) => ({ ...prev, isReceivable: checked as boolean }))
+                      }
+                    />
+                    <Label htmlFor="isReceivable" className="cursor-pointer text-amber-800 flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      미수 (아직 입금되지 않음)
+                    </Label>
+                  </div>
+
+                  {/* 결제 유형 선택 */}
+                  <div className="space-y-2">
+                    <Label className="text-sm flex items-center gap-2">
+                      <Wallet className="h-4 w-4" />
+                      결제 유형
+                    </Label>
+                    <Select
+                      value={revenueOptions.paymentType}
+                      onValueChange={(value: "NORMAL" | "DEPOSIT" | "BALANCE") =>
+                        setRevenueOptions((prev) => ({ ...prev, paymentType: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="NORMAL">일반</SelectItem>
+                        <SelectItem value="DEPOSIT">선금</SelectItem>
+                        <SelectItem value="BALANCE">착수금/잔금</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      선금 또는 착수금 선택 시 메모에 자동으로 표시됩니다
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* 소계 */}
               {currentSubtotal > 0 && (
@@ -535,8 +655,33 @@ export default function BulkEntryPage() {
                     key={entry.id}
                     className="flex items-center justify-between py-1 text-sm"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-muted-foreground">{entry.categoryLabel}</span>
+                      {/* 광고업체 표시 */}
+                      {entry.advertiser && (
+                        <Badge variant="outline" className="text-xs bg-pink-50 text-pink-700 border-pink-200">
+                          <Megaphone className="h-3 w-3 mr-1" />
+                          {entry.advertiser}
+                        </Badge>
+                      )}
+                      {/* 선금/착수금 표시 */}
+                      {entry.paymentType === "DEPOSIT" && (
+                        <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                          선금
+                        </Badge>
+                      )}
+                      {entry.paymentType === "BALANCE" && (
+                        <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                          착수금
+                        </Badge>
+                      )}
+                      {/* 미수 표시 */}
+                      {entry.isReceivable && (
+                        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                          <Clock className="h-3 w-3 mr-1" />
+                          미수
+                        </Badge>
+                      )}
                       {entry.memo && (
                         <span className="text-xs text-muted-foreground">
                           ({entry.memo})
