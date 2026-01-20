@@ -391,9 +391,9 @@ export default function FinancePage() {
     }
   };
 
-  // 수입 거래 (정산 완료된 건만 포함, 미수금 제외)
+  // 수입 거래 (미수금 제외 - PENDING 상태가 아닌 모든 거래)
   const revenueTransactions = useMemo(
-    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus === "COMPLETED"),
+    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus !== "PENDING"),
     [transactions]
   );
 
