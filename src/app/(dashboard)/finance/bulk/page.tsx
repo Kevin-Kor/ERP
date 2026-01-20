@@ -71,6 +71,7 @@ interface EntryItem {
   amount: number;
   memo: string;
   advertiser?: string;
+  vendorName?: string;
   isReceivable?: boolean;
   paymentType?: "NORMAL" | "DEPOSIT" | "BALANCE";
   clientId?: string; // 고정업체 ID
@@ -91,6 +92,7 @@ export default function BulkEntryPage() {
     memo: string;
     vendorId?: string;
     advertiser?: string;
+    vendorName?: string;
   }[]>([
     { id: crypto.randomUUID(), amount: "", memo: "" }
   ]);
@@ -198,7 +200,7 @@ export default function BulkEntryPage() {
     const newId = crypto.randomUUID();
     setCurrentAmounts(prev => [
       ...prev,
-      { id: newId, amount: "", memo: "", advertiser: "" }
+      { id: newId, amount: "", memo: "", advertiser: "", vendorName: "" }
     ]);
     // 새 필드에 포커스
     setTimeout(() => {
@@ -232,7 +234,7 @@ export default function BulkEntryPage() {
   };
 
   // 금액 업데이트
-  const updateAmount = (id: string, field: "amount" | "memo" | "vendorId", value: string) => {
+  const updateAmount = (id: string, field: "amount" | "memo" | "vendorId" | "advertiser" | "vendorName", value: string) => {
     setCurrentAmounts(prev =>
       prev.map(item => (item.id === id ? { ...item, [field]: value } : item))
     );
@@ -289,18 +291,26 @@ export default function BulkEntryPage() {
     const validAmounts = currentAmounts.filter(item => parseFloat(item.amount) > 0);
     if (validAmounts.length === 0) return;
 
-    const newEntries: EntryItem[] = validAmounts.map(item => ({
-      id: crypto.randomUUID(),
-      categoryId: selectedCategory,
-      categoryLabel: selectedCategoryInfo.label,
-      type: selectedCategoryInfo.type,
-      amount: parseFloat(item.amount) * 10000, // 만원 -> 원 변환
-      memo: item.memo,
-      advertiser: isAdRevenueCategory ? item.advertiser : undefined,
-      isReceivable: isRevenueCategory ? revenueOptions.isReceivable : undefined,
-      paymentType: isRevenueCategory ? revenueOptions.paymentType : undefined,
-      clientId: isFixedManagementCategory ? item.vendorId : undefined, // 고정업체 ID 저장
-    }));
+    const newEntries: EntryItem[] = validAmounts.map(item => {
+      // vendorName 결정: 광고비 수입이면 advertiser를, 아니면 입력한 vendorName 사용
+      const vendorName = isAdRevenueCategory && item.advertiser
+        ? item.advertiser
+        : item.vendorName || undefined;
+
+      return {
+        id: crypto.randomUUID(),
+        categoryId: selectedCategory,
+        categoryLabel: selectedCategoryInfo.label,
+        type: selectedCategoryInfo.type,
+        amount: parseFloat(item.amount) * 10000, // 만원 -> 원 변환
+        memo: item.memo,
+        advertiser: isAdRevenueCategory ? item.advertiser : undefined,
+        vendorName,
+        isReceivable: isRevenueCategory ? revenueOptions.isReceivable : undefined,
+        paymentType: isRevenueCategory ? revenueOptions.paymentType : undefined,
+        clientId: isFixedManagementCategory ? item.vendorId : undefined, // 고정업체 ID 저장
+      };
+    });
 
     setAllEntries(prev => [...prev, ...newEntries]);
     setCurrentAmounts([{ id: crypto.randomUUID(), amount: "", memo: "" }]);
@@ -365,6 +375,7 @@ export default function BulkEntryPage() {
             amount: entry.amount,
             paymentStatus: entry.isReceivable ? "PENDING" : "COMPLETED",
             memo: buildMemo(entry),
+            vendorName: entry.vendorName || null,
             clientId: entry.clientId || null,
           }),
         });
@@ -383,6 +394,7 @@ export default function BulkEntryPage() {
               amount: entry.amount, // 동일 금액 (이미 50%로 계산됨)
               paymentStatus: "PENDING", // 잔금은 미수 상태로 생성
               memo: balanceMemo,
+              vendorName: entry.vendorName || null,
               clientId: entry.clientId,
             }),
           });
@@ -520,6 +532,16 @@ export default function BulkEntryPage() {
                         placeholder="광고업체명"
                         value={item.advertiser || ""}
                         onChange={(e) => updateAmount(item.id, "advertiser", e.target.value)}
+                        className="w-[140px]"
+                      />
+                    )}
+                    {/* 건별 관리업체일 때 업체명 입력 */}
+                    {selectedCategory === "PROJECT_MANAGEMENT" && (
+                      <Input
+                        type="text"
+                        placeholder="업체명"
+                        value={item.vendorName || ""}
+                        onChange={(e) => updateAmount(item.id, "vendorName", e.target.value)}
                         className="w-[140px]"
                       />
                     )}
