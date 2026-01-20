@@ -484,7 +484,12 @@ export default function FinancePage() {
 
   const totalRevenue = revenueTransactions.reduce((sum, t) => sum + t.amount, 0);
   const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
-  const netProfit = totalRevenue - totalExpense;
+
+  // 정산 완료된 금액을 지출에 합산
+  const settlementExpense = settlementSummary?.statusTotals.completed.amount || 0;
+  const totalExpenseWithSettlement = totalExpense + settlementExpense;
+
+  const netProfit = totalRevenue - totalExpenseWithSettlement;
 
   // 카테고리별 그룹핑
   const revenueByCategory = useMemo(() => {
@@ -510,8 +515,19 @@ export default function FinancePage() {
       grouped[t.category].total += t.amount;
       grouped[t.category].count += 1;
     });
+
+    // 인플루언서 정산 완료 금액 추가
+    if (settlementExpense > 0) {
+      const settlementCount = settlementSummary?.statusTotals.completed.count || 0;
+      grouped["INFLUENCER_SETTLEMENT"] = {
+        label: "인플루언서 정산",
+        total: settlementExpense,
+        count: settlementCount,
+      };
+    }
+
     return Object.entries(grouped).sort((a, b) => b[1].total - a[1].total);
-  }, [expenseTransactions]);
+  }, [expenseTransactions, settlementExpense, settlementSummary]);
 
   const getCategoryLabel = (type: string, category: string) => {
     const categories = type === "REVENUE" ? REVENUE_CATEGORIES : EXPENSE_CATEGORIES;
@@ -834,8 +850,15 @@ export default function FinancePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600">{formatCurrency(totalExpense)}</div>
-            <p className="text-sm text-gray-500 mt-1">{expenseTransactions.length}건</p>
+            <div className="text-3xl font-bold text-red-600">{formatCurrency(totalExpenseWithSettlement)}</div>
+            <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+              <p>{expenseTransactions.length}건</p>
+              {settlementExpense > 0 && (
+                <p className="text-xs">
+                  (정산: {formatCurrency(settlementExpense)})
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
 
