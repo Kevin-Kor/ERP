@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type StatusKey = "pending" | "in_progress" | "completed";
@@ -10,21 +10,72 @@ const normalizeStatus = (status?: string): StatusKey => {
     return "pending";
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const { searchParams } = new URL(request.url);
+        const month = searchParams.get("month"); // YYYY-MM format
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const where: any = {};
+
+        // 월별 필터링 (정산 완료 날짜 기준)
+        if (month) {
+            const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
+            const endOfMonth = new Date(startOfMonth);
+            endOfMonth.setMonth(endOfMonth.getMonth() + 1);
+
+            where.OR = [
+                {
+                    // 정산일(paymentDate)이 해당 월에 속하는 경우
+                    paymentDate: {
+                        gte: startOfMonth,
+                        lt: endOfMonth,
+                    },
+                },
+                {
+                    // 정산일이 없는 경우, 정산마감일(paymentDueDate) 기준
+                    AND: [
+                        { paymentDate: null },
+                        {
+                            paymentDueDate: {
+                                gte: startOfMonth,
+                                lt: endOfMonth,
+                            },
+                        },
+                    ],
+                },
+                {
+                    // 정산일과 정산마감일이 모두 없는 경우, 생성일 기준
+                    AND: [
+                        { paymentDate: null },
+                        { paymentDueDate: null },
+                        {
+                            createdAt: {
+                                gte: startOfMonth,
+                                lt: endOfMonth,
+                            },
+                        },
+                    ],
+                },
+            ];
+        }
+
         const [statusGroups, influencerGroups, projectGroups] = await Promise.all([
             prisma.projectInfluencer.groupBy({
                 by: ["paymentStatus"],
+                where,
                 _sum: { fee: true },
                 _count: { _all: true },
             }),
             prisma.projectInfluencer.groupBy({
                 by: ["influencerId"],
+                where,
                 _sum: { fee: true },
                 _count: { _all: true },
             }),
             prisma.projectInfluencer.groupBy({
                 by: ["projectId"],
+                where,
                 _sum: { fee: true },
                 _count: { _all: true },
             }),
