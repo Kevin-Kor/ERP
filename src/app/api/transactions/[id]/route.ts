@@ -69,6 +69,9 @@ export async function PATCH(
     if (body.memo !== undefined) {
       updateData.memo = body.memo;
     }
+    if (body.vendorName !== undefined) {
+      updateData.vendorName = body.vendorName || null;
+    }
     if (body.clientId !== undefined) {
       updateData.clientId = body.clientId || null;
     }
