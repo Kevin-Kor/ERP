@@ -215,12 +215,9 @@ export default function FinancePage() {
   useEffect(() => {
     fetchTransactions();
     fetchFixedVendors();
+    fetchSettlementSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth]);
-
-  useEffect(() => {
-    fetchSettlementSummary();
-  }, []);
 
   async function fetchTransactions() {
     try {
@@ -230,8 +227,6 @@ export default function FinancePage() {
 
       const res = await fetch(`/api/transactions?${params}`);
       const data = await res.json();
-      console.log("📊 Fetched transactions:", data.transactions?.length, "items");
-      console.log("📊 First transaction:", data.transactions?.[0]);
       setTransactions(data.transactions || []);
     } catch (error) {
       console.error("Failed to fetch transactions:", error);
@@ -253,7 +248,10 @@ export default function FinancePage() {
 
   async function fetchSettlementSummary() {
     try {
-      const res = await fetch("/api/settlements/summary");
+      const params = new URLSearchParams();
+      params.set("month", selectedMonth);
+
+      const res = await fetch(`/api/settlements/summary?${params}`);
       const data = await res.json();
       setSettlementSummary(data);
     } catch (error) {
@@ -303,6 +301,11 @@ export default function FinancePage() {
       finalMemo = `[광고업체: ${newRevenueForm.advertiser}]${finalMemo ? " " + finalMemo : ""}`;
     }
 
+    // vendorName 결정: 광고비 수입이면 advertiser를, 아니면 입력한 vendorName 사용
+    const finalVendorName = newRevenueForm.category === "AD_REVENUE" && newRevenueForm.advertiser
+      ? newRevenueForm.advertiser
+      : newRevenueForm.vendorName || null;
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/transactions", {
@@ -315,7 +318,7 @@ export default function FinancePage() {
           amount: newRevenueForm.amount,
           paymentStatus: newRevenueForm.isReceivable ? "PENDING" : "COMPLETED",
           memo: finalMemo || null,
-          vendorName: newRevenueForm.vendorName || null,
+          vendorName: finalVendorName,
           clientId: newRevenueForm.clientId,
         }),
       });
@@ -394,19 +397,16 @@ export default function FinancePage() {
   };
 
   // 수입 거래 (미수금 제외 - PENDING 상태가 아닌 모든 거래)
-  const revenueTransactions = useMemo(() => {
-    const filtered = transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus !== "PENDING");
-    console.log("💰 Revenue transactions filtered:", filtered.length, "out of", transactions.length);
-    console.log("💰 Payment statuses:", transactions.map(t => ({type: t.type, status: t.paymentStatus})));
-    return filtered;
-  }, [transactions]);
+  const revenueTransactions = useMemo(
+    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus !== "PENDING"),
+    [transactions]
+  );
 
   // 지출 거래
-  const expenseTransactions = useMemo(() => {
-    const filtered = transactions.filter((t) => t.type === "EXPENSE");
-    console.log("💸 Expense transactions filtered:", filtered.length);
-    return filtered;
-  }, [transactions]);
+  const expenseTransactions = useMemo(
+    () => transactions.filter((t) => t.type === "EXPENSE"),
+    [transactions]
+  );
 
   // 필터된 수입 거래
   const filteredRevenueTransactions = useMemo(
