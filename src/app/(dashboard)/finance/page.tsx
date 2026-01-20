@@ -230,6 +230,8 @@ export default function FinancePage() {
 
       const res = await fetch(`/api/transactions?${params}`);
       const data = await res.json();
+      console.log("📊 Fetched transactions:", data.transactions?.length, "items");
+      console.log("📊 First transaction:", data.transactions?.[0]);
       setTransactions(data.transactions || []);
     } catch (error) {
       console.error("Failed to fetch transactions:", error);
@@ -392,16 +394,19 @@ export default function FinancePage() {
   };
 
   // 수입 거래 (미수금 제외 - PENDING 상태가 아닌 모든 거래)
-  const revenueTransactions = useMemo(
-    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus !== "PENDING"),
-    [transactions]
-  );
+  const revenueTransactions = useMemo(() => {
+    const filtered = transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus !== "PENDING");
+    console.log("💰 Revenue transactions filtered:", filtered.length, "out of", transactions.length);
+    console.log("💰 Payment statuses:", transactions.map(t => ({type: t.type, status: t.paymentStatus})));
+    return filtered;
+  }, [transactions]);
 
   // 지출 거래
-  const expenseTransactions = useMemo(
-    () => transactions.filter((t) => t.type === "EXPENSE"),
-    [transactions]
-  );
+  const expenseTransactions = useMemo(() => {
+    const filtered = transactions.filter((t) => t.type === "EXPENSE");
+    console.log("💸 Expense transactions filtered:", filtered.length);
+    return filtered;
+  }, [transactions]);
 
   // 필터된 수입 거래
   const filteredRevenueTransactions = useMemo(
