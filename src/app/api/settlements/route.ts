@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       where.paymentStatus = { in: [normalizedStatus, normalizedStatus.toUpperCase()] };
     }
 
-    // 월별 필터링 (촬영일 또는 정산마감일 기준)
+    // 월별 필터링 (정산 완료 날짜 기준)
     if (month) {
       const startOfMonth = new Date(`${month}-01T00:00:00.000Z`);
       const endOfMonth = new Date(startOfMonth);
@@ -29,20 +29,28 @@ export async function GET(request: NextRequest) {
 
       where.OR = [
         {
-          shootingDate: {
+          // 정산일(paymentDate)이 해당 월에 속하는 경우
+          paymentDate: {
             gte: startOfMonth,
             lt: endOfMonth,
           },
         },
         {
-          paymentDueDate: {
-            gte: startOfMonth,
-            lt: endOfMonth,
-          },
-        },
-        {
+          // 정산일이 없는 경우, 정산마감일(paymentDueDate) 기준
           AND: [
-            { shootingDate: null },
+            { paymentDate: null },
+            {
+              paymentDueDate: {
+                gte: startOfMonth,
+                lt: endOfMonth,
+              },
+            },
+          ],
+        },
+        {
+          // 정산일과 정산마감일이 모두 없는 경우, 생성일 기준
+          AND: [
+            { paymentDate: null },
             { paymentDueDate: null },
             {
               createdAt: {

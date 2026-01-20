@@ -69,6 +69,7 @@ interface Transaction {
   paymentStatus: string;
   paymentDate: string | null;
   memo: string | null;
+  vendorName: string | null;
   client: { id: string; name: string } | null;
   project: { id: string; name: string } | null;
   influencer: { id: string; name: string } | null;
@@ -119,6 +120,7 @@ export default function FinancePage() {
     amount: 0,
     paymentStatus: "",
     memo: "",
+    vendorName: "",
   });
 
   // Delete confirmation state
@@ -141,6 +143,7 @@ export default function FinancePage() {
     isManualAmount: false,
     category: "CAMPAIGN_FEE",
     memo: "",
+    vendorName: "", // 업체명
     advertiser: "", // 광고업체명 (AD_REVENUE 카테고리용)
     isReceivable: false, // 미수 여부
     paymentType: "NORMAL" as "NORMAL" | "DEPOSIT" | "BALANCE", // 결제 유형: 선금/착수금/일반
@@ -154,7 +157,13 @@ export default function FinancePage() {
     amount: 0,
     amountInMan: "",
     memo: "",
+    vendorName: "", // 업체명
   });
+
+  // Payment completion date picker state
+  const [completingTransaction, setCompletingTransaction] = useState<Transaction | null>(null);
+  const [isPaymentDateDialogOpen, setIsPaymentDateDialogOpen] = useState(false);
+  const [selectedPaymentDate, setSelectedPaymentDate] = useState(new Date().toISOString().split("T")[0]);
 
   const settlementStatusOptions: { value: SettlementStatus; label: string }[] = [
     { value: "pending", label: "예정" },
@@ -304,6 +313,7 @@ export default function FinancePage() {
           amount: newRevenueForm.amount,
           paymentStatus: newRevenueForm.isReceivable ? "PENDING" : "COMPLETED",
           memo: finalMemo || null,
+          vendorName: newRevenueForm.vendorName || null,
           clientId: newRevenueForm.clientId,
         }),
       });
@@ -318,6 +328,7 @@ export default function FinancePage() {
           isManualAmount: false,
           category: "CAMPAIGN_FEE",
           memo: "",
+          vendorName: "",
           advertiser: "",
           isReceivable: false,
           paymentType: "NORMAL" as "NORMAL" | "DEPOSIT" | "BALANCE",
@@ -354,6 +365,7 @@ export default function FinancePage() {
           amount: newExpenseForm.amount,
           paymentStatus: "COMPLETED",
           memo: newExpenseForm.memo || null,
+          vendorName: newExpenseForm.vendorName || null,
         }),
       });
 
@@ -365,6 +377,7 @@ export default function FinancePage() {
           amount: 0,
           amountInMan: "",
           memo: "",
+          vendorName: "",
         });
         fetchTransactions();
       } else {
@@ -378,9 +391,9 @@ export default function FinancePage() {
     }
   };
 
-  // 수입 거래
+  // 수입 거래 (정산 완료된 건만 포함, 미수금 제외)
   const revenueTransactions = useMemo(
-    () => transactions.filter((t) => t.type === "REVENUE"),
+    () => transactions.filter((t) => t.type === "REVENUE" && t.paymentStatus === "COMPLETED"),
     [transactions]
   );
 
@@ -510,6 +523,7 @@ export default function FinancePage() {
       amount: tx.amount,
       paymentStatus: tx.paymentStatus,
       memo: tx.memo || "",
+      vendorName: tx.vendorName || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -530,6 +544,7 @@ export default function FinancePage() {
           paymentStatus: editForm.paymentStatus,
           paymentDate: editForm.paymentStatus === "COMPLETED" ? new Date().toISOString() : null,
           memo: editForm.memo || null,
+          vendorName: editForm.vendorName || null,
         }),
       });
 
@@ -577,15 +592,22 @@ export default function FinancePage() {
   };
 
   const togglePaymentStatus = async (tx: Transaction) => {
-    const newStatus = tx.paymentStatus === "COMPLETED" ? "PENDING" : "COMPLETED";
+    // 미수금(PENDING)을 완료로 변경하는 경우, 날짜 선택 다이얼로그 표시
+    if (tx.paymentStatus === "PENDING") {
+      setCompletingTransaction(tx);
+      setSelectedPaymentDate(new Date().toISOString().split("T")[0]);
+      setIsPaymentDateDialogOpen(true);
+      return;
+    }
 
+    // 완료(COMPLETED)를 미수금(PENDING)으로 되돌리는 경우
     try {
       const res = await fetch(`/api/transactions/${tx.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          paymentStatus: newStatus,
-          paymentDate: newStatus === "COMPLETED" ? new Date().toISOString() : null,
+          paymentStatus: "PENDING",
+          paymentDate: null,
         }),
       });
 
@@ -594,6 +616,30 @@ export default function FinancePage() {
       }
     } catch (error) {
       console.error("Toggle status error:", error);
+    }
+  };
+
+  // 입금 완료 처리 (선택된 날짜로)
+  const completePayment = async () => {
+    if (!completingTransaction) return;
+
+    try {
+      const res = await fetch(`/api/transactions/${completingTransaction.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentStatus: "COMPLETED",
+          paymentDate: new Date(selectedPaymentDate).toISOString(),
+        }),
+      });
+
+      if (res.ok) {
+        setIsPaymentDateDialogOpen(false);
+        setCompletingTransaction(null);
+        fetchTransactions();
+      }
+    } catch (error) {
+      console.error("Complete payment error:", error);
     }
   };
 
@@ -625,6 +671,7 @@ export default function FinancePage() {
         <TableRow>
           <TableHead className="w-[80px]">일자</TableHead>
           <TableHead>카테고리</TableHead>
+          <TableHead>업체명</TableHead>
           <TableHead>메모</TableHead>
           <TableHead className="text-right">금액</TableHead>
           <TableHead className="w-[70px]">상태</TableHead>
@@ -638,6 +685,9 @@ export default function FinancePage() {
             <TableRow key={tx.id} className="group">
               <TableCell className="text-muted-foreground text-sm">{new Date(tx.date).getDate()}일</TableCell>
               <TableCell className="text-sm">{getCategoryLabel(tx.type, tx.category)}</TableCell>
+              <TableCell className="text-sm font-medium">
+                {tx.vendorName || tx.client?.name || "-"}
+              </TableCell>
               <TableCell className="text-muted-foreground text-sm max-w-[150px]">
                 <div className="flex items-center gap-1">
                   {paymentType && (
@@ -654,7 +704,7 @@ export default function FinancePage() {
                       {paymentType}
                     </Badge>
                   )}
-                  <span className="truncate">{cleanMemo || tx.client?.name || tx.project?.name || "-"}</span>
+                  <span className="truncate">{cleanMemo || tx.project?.name || "-"}</span>
                 </div>
               </TableCell>
               <TableCell
@@ -1154,7 +1204,7 @@ export default function FinancePage() {
                 <TableRow>
                   <TableHead className="w-[80px]">일자</TableHead>
                   <TableHead>카테고리</TableHead>
-                  <TableHead>클라이언트</TableHead>
+                  <TableHead>업체명</TableHead>
                   <TableHead>광고업체</TableHead>
                   <TableHead>메모</TableHead>
                   <TableHead className="text-right">금액</TableHead>
@@ -1191,8 +1241,8 @@ export default function FinancePage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm">
-                        {tx.client?.name || "-"}
+                      <TableCell className="text-sm font-medium">
+                        {tx.vendorName || tx.client?.name || "-"}
                       </TableCell>
                       <TableCell className="text-sm">
                         {advertiser ? (
@@ -1400,6 +1450,19 @@ export default function FinancePage() {
             )}
 
             <div className="space-y-2">
+              <Label>업체명</Label>
+              <Input
+                type="text"
+                placeholder="업체명을 입력하세요"
+                value={newRevenueForm.vendorName}
+                onChange={(e) => setNewRevenueForm({ ...newRevenueForm, vendorName: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                수입 카테고리에 표시될 업체명입니다
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />
                 고정업체 선택
@@ -1565,6 +1628,19 @@ export default function FinancePage() {
             </div>
 
             <div className="space-y-2">
+              <Label>업체명</Label>
+              <Input
+                type="text"
+                placeholder="업체명을 입력하세요"
+                value={newExpenseForm.vendorName}
+                onChange={(e) => setNewExpenseForm({ ...newExpenseForm, vendorName: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                지출 카테고리에 표시될 업체명입니다
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label>금액 (만원)</Label>
               <div className="flex items-center gap-2">
                 <Input
@@ -1597,6 +1673,61 @@ export default function FinancePage() {
             <Button onClick={handleAddExpense} disabled={isSubmitting} className="bg-red-600 hover:bg-red-700">
               {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               추가
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Completion Date Dialog */}
+      <Dialog open={isPaymentDateDialogOpen} onOpenChange={setIsPaymentDateDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <CheckCircle className="h-5 w-5" />
+              입금 완료 날짜 선택
+            </DialogTitle>
+            <DialogDescription>
+              입금이 완료된 날짜를 선택하세요. 선택한 날짜의 월에 수입이 집계됩니다.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {completingTransaction && (
+              <div className="p-3 bg-gray-50 rounded-lg space-y-1">
+                <p className="text-sm font-medium">{completingTransaction.client?.name || "클라이언트 없음"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(completingTransaction.amount)}
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="paymentDate">입금 완료 날짜</Label>
+              <Input
+                id="paymentDate"
+                type="date"
+                value={selectedPaymentDate}
+                onChange={(e) => setSelectedPaymentDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsPaymentDateDialogOpen(false);
+                setCompletingTransaction(null);
+              }}
+            >
+              취소
+            </Button>
+            <Button
+              onClick={completePayment}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              입금 완료
             </Button>
           </div>
         </DialogContent>
