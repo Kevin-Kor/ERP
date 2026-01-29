@@ -97,16 +97,6 @@ NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="your-secret-key"
 ```
 
-### 테스트 계정
-
-- **관리자**
-  - 이메일: `admin@agency.com`
-  - 비밀번호: `admin123`
-
-- **팀원**
-  - 이메일: `member@agency.com`
-  - 비밀번호: `member123`
-
 ## 스크립트
 
 ```bash
