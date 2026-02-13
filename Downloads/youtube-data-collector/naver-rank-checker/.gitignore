@@ -99,3 +99,6 @@ jspm_packages/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Token/data store (contains encrypted secrets)
+data/store.json

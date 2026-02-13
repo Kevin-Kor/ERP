@@ -3,7 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "YouTube Data API v3를 활용한 동영상 데이터 수집 및 분석 웹 애플리케이션",
-  "keywords": ["youtube", "data-collection", "analytics", "nextjs", "typescript"],
+  "keywords": [
+    "youtube",
+    "data-collection",
+    "analytics",
+    "nextjs",
+    "typescript"
+  ],
   "author": "Kevin",
   "license": "MIT",
   "engines": {
@@ -33,11 +39,15 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.542.0",
     "next": "15.5.2",
+    "next-themes": "^0.4.6",
+    "openai": "^6.21.0",
     "papaparse": "^5.5.3",
+    "radix-ui": "^1.4.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.62.0",
     "recharts": "^3.1.2",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "zod": "^4.1.5"
   },

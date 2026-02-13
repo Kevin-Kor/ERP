@@ -41,6 +41,7 @@ export const youtubeSearchSchema = z.object({
 });
 
 export type YouTubeSearchFormData = z.infer<typeof youtubeSearchSchema>;
+export type YouTubeSearchFormInput = z.input<typeof youtubeSearchSchema>;
 
 export const uploadPeriodOptions = [
   { value: 'all', label: '전체' },

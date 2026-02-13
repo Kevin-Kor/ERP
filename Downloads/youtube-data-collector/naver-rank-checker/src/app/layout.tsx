@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { Navigation } from "@/components/navigation";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,12 +16,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "YouTube 데이터 수집기",
-  description: "YouTube 동영상 데이터 수집 및 분석 도구 - 마케팅 담당자를 위한 전문 분석 플랫폼",
-  keywords: ["YouTube", "데이터 수집", "동영상 분석", "마케팅", "인플루언서"],
+  title: "마케팅 도구 모음",
+  description: "YouTube 데이터 수집 및 네이버 카페 자동화 도구",
+  keywords: ["YouTube", "네이버 카페", "자동화", "마케팅", "콘텐츠"],
   openGraph: {
-    title: "YouTube 데이터 수집기",
-    description: "YouTube 동영상 데이터 수집 및 분석 도구",
+    title: "마케팅 도구 모음",
+    description: "YouTube 데이터 수집 및 네이버 카페 자동화 도구",
     type: "website",
   },
 };
@@ -35,7 +37,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
+          <Navigation />
           {children}
+          <Toaster richColors position="top-right" />
         </Providers>
       </body>
     </html>

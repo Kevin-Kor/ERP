@@ -306,7 +306,7 @@ export function StatsDashboard({ results }: StatsDashboardProps) {
                   <YAxis fontSize={12} />
                   <Tooltip 
                     labelFormatter={(value) => `${value}월`}
-                    formatter={[(value: number) => [value, '동영상 수']]}
+                    formatter={(value: number) => [value, '동영상 수']}
                   />
                   <Area 
                     type="monotone" 

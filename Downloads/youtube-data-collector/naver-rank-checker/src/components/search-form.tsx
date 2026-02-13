@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-  youtubeSearchSchema, 
+import {
+  youtubeSearchSchema,
   type YouTubeSearchFormData,
+  type YouTubeSearchFormInput,
   regionOptions,
   videoDurationOptions,
   orderOptions,
@@ -30,7 +31,7 @@ export function SearchForm({ onSubmit, isLoading = false }: SearchFormProps) {
     formState: { errors },
     watch,
     setValue,
-  } = useForm<YouTubeSearchFormData>({
+  } = useForm<YouTubeSearchFormInput, unknown, YouTubeSearchFormData>({
     resolver: zodResolver(youtubeSearchSchema),
     defaultValues: {
       query: '',
@@ -111,7 +112,7 @@ export function SearchForm({ onSubmit, isLoading = false }: SearchFormProps) {
             {/* Region */}
             <div className="space-y-2">
               <Label>지역</Label>
-              <Select onValueChange={(value) => setValue('region', value)}>
+              <Select onValueChange={(value) => setValue('region', value as YouTubeSearchFormInput['region'])}>
                 <SelectTrigger>
                   <SelectValue placeholder="전체 지역" />
                 </SelectTrigger>
@@ -145,7 +146,7 @@ export function SearchForm({ onSubmit, isLoading = false }: SearchFormProps) {
             {/* Video Duration */}
             <div className="space-y-2">
               <Label>동영상 길이</Label>
-              <Select onValueChange={(value) => setValue('videoDuration', value)}>
+              <Select onValueChange={(value) => setValue('videoDuration', value as YouTubeSearchFormInput['videoDuration'])}>
                 <SelectTrigger>
                   <SelectValue placeholder="전체" />
                 </SelectTrigger>
@@ -162,7 +163,7 @@ export function SearchForm({ onSubmit, isLoading = false }: SearchFormProps) {
             {/* Sort Order */}
             <div className="space-y-2">
               <Label>정렬 기준</Label>
-              <Select onValueChange={(value) => setValue('order', value)}>
+              <Select onValueChange={(value) => setValue('order', value as YouTubeSearchFormInput['order'])}>
                 <SelectTrigger>
                   <SelectValue placeholder="관련성" />
                 </SelectTrigger>

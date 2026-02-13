@@ -32,8 +32,8 @@ export function middleware(request: NextRequest) {
     // Rate limiting을 위한 헤더 추가
     response.headers.set('X-RateLimit-Limit', '60');
     response.headers.set('X-RateLimit-Remaining', '59');
-    
-    // API 키 검증 (프로덕션에서만)
+
+    // YouTube API 키 검증 (프로덕션에서만)
     if (
       process.env.NODE_ENV === 'production' &&
       request.nextUrl.pathname.startsWith('/api/youtube')
@@ -42,6 +42,21 @@ export function middleware(request: NextRequest) {
       if (!apiKey) {
         return NextResponse.json(
           { error: 'API configuration error' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Naver API 환경변수 검증 (프로덕션, 콜백 제외)
+    if (
+      process.env.NODE_ENV === 'production' &&
+      request.nextUrl.pathname.startsWith('/api/naver') &&
+      !request.nextUrl.pathname.includes('/auth/callback')
+    ) {
+      const clientId = process.env.NAVER_CLIENT_ID;
+      if (!clientId) {
+        return NextResponse.json(
+          { error: 'Naver API configuration error' },
           { status: 500 }
         );
       }
