@@ -58,6 +58,7 @@ import {
   REVENUE_CATEGORIES,
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_GROUPS,
+  getCategoryColor,
 } from "@/lib/utils";
 
 interface Transaction {
@@ -520,7 +521,7 @@ export default function FinancePage() {
     if (settlementExpense > 0) {
       const settlementCount = settlementSummary?.statusTotals.completed.count || 0;
       grouped["INFLUENCER_SETTLEMENT"] = {
-        label: "인플루언서 정산",
+        label: "정산",
         total: settlementExpense,
         count: settlementCount,
       };
@@ -1011,7 +1012,12 @@ export default function FinancePage() {
                       <SelectItem value="all">전체 ({formatCurrency(totalRevenue)})</SelectItem>
                       {revenueByCategory.map(([category, data]) => (
                         <SelectItem key={category} value={category}>
-                          {data.label} ({formatCurrency(data.total)})
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getCategoryColor("REVENUE", category)}`}>
+                              {data.label}
+                            </span>
+                            <span className="text-sm">{formatCurrency(data.total)}</span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1067,7 +1073,12 @@ export default function FinancePage() {
                       <SelectItem value="all">전체 ({formatCurrency(totalExpense)})</SelectItem>
                       {expenseByCategory.map(([category, data]) => (
                         <SelectItem key={category} value={category}>
-                          {data.label} ({formatCurrency(data.total)})
+                          <div className="flex items-center gap-2 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getCategoryColor("EXPENSE", category)}`}>
+                              {data.label}
+                            </span>
+                            <span className="text-sm">{formatCurrency(data.total)}</span>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1218,7 +1229,12 @@ export default function FinancePage() {
                     </SelectItem>
                     {receivablesByCategory.map(([category, data]) => (
                       <SelectItem key={category} value={category}>
-                        {data.label} ({formatCurrency(data.total)})
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${getCategoryColor("REVENUE", category)}`}>
+                            {data.label}
+                          </span>
+                          <span className="text-sm">{formatCurrency(data.total)}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

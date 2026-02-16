@@ -103,40 +103,40 @@ export const STATUS_COLORS = {
 
 // 카테고리 라벨
 export const REVENUE_CATEGORIES = [
-  { value: "FIXED_MANAGEMENT", label: "고정 관리업체" },
-  { value: "PROJECT_MANAGEMENT", label: "건별 관리업체" },
-  { value: "AD_REVENUE", label: "광고비 수입" },
-  { value: "PLATFORM_REVENUE", label: "플랫폼 수입" },
-  { value: "CAMPAIGN_FEE", label: "캠페인 대행료" },
-  { value: "CONTENT_FEE", label: "콘텐츠 제작비" },
-  { value: "CONSULTING", label: "컨설팅/기타" },
-  { value: "OTHER_REVENUE", label: "기타 수입" },
+  { value: "FIXED_MANAGEMENT", label: "고정", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  { value: "PROJECT_MANAGEMENT", label: "건별", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  { value: "AD_REVENUE", label: "광고수입", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  { value: "PLATFORM_REVENUE", label: "플랫폼", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
+  { value: "CAMPAIGN_FEE", label: "캠페인", color: "bg-pink-100 text-pink-700 border-pink-200" },
+  { value: "CONTENT_FEE", label: "콘텐츠", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  { value: "CONSULTING", label: "컨설팅", color: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+  { value: "OTHER_REVENUE", label: "기타", color: "bg-gray-100 text-gray-700 border-gray-200" },
 ] as const;
 
 export const EXPENSE_CATEGORIES = [
   // 업무 관련
-  { value: "INFLUENCER_COST", label: "인플루언서 비용", group: "업무" },
-  { value: "INFLUENCER_FEE", label: "인플루언서 비용", group: "업무" },
-  { value: "AD_EXPENSE", label: "광고비", group: "업무" },
-  { value: "AD_SPEND", label: "광고비", group: "업무" },
-  { value: "CONTENT_PRODUCTION", label: "콘텐츠 제작비", group: "업무" },
+  { value: "INFLUENCER_COST", label: "인플루언서", group: "업무", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  { value: "INFLUENCER_FEE", label: "인플루언서", group: "업무", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  { value: "AD_EXPENSE", label: "광고비", group: "업무", color: "bg-pink-100 text-pink-700 border-pink-200" },
+  { value: "AD_SPEND", label: "광고비", group: "업무", color: "bg-pink-100 text-pink-700 border-pink-200" },
+  { value: "CONTENT_PRODUCTION", label: "콘텐츠", group: "업무", color: "bg-amber-100 text-amber-700 border-amber-200" },
   // 운영/인건비
-  { value: "OPERATIONS", label: "운영비", group: "운영" },
-  { value: "SALARY", label: "인건비", group: "운영" },
-  { value: "OFFICE_RENT", label: "임대료", group: "운영" },
+  { value: "OPERATIONS", label: "운영비", group: "운영", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  { value: "SALARY", label: "인건비", group: "운영", color: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+  { value: "OFFICE_RENT", label: "임대료", group: "운영", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
   // 일반 지출
-  { value: "FOOD", label: "식비", group: "일반" },
-  { value: "TRANSPORT", label: "교통비", group: "일반" },
-  { value: "TRANSPORTATION", label: "교통비", group: "일반" },
-  { value: "COMMUNICATION", label: "통신비", group: "일반" },
-  { value: "SUPPLIES", label: "소모품비", group: "일반" },
-  { value: "ENTERTAINMENT", label: "접대비", group: "일반" },
-  { value: "WELFARE", label: "복리후생비", group: "일반" },
-  { value: "EDUCATION", label: "교육비", group: "일반" },
-  { value: "SUBSCRIPTION", label: "구독료", group: "일반" },
-  { value: "TAX", label: "세금/공과금", group: "일반" },
-  { value: "OTHER_EXPENSE", label: "기타 지출", group: "일반" },
-  { value: "OTHER", label: "기타", group: "일반" },
+  { value: "FOOD", label: "식비", group: "일반", color: "bg-orange-100 text-orange-700 border-orange-200" },
+  { value: "TRANSPORT", label: "교통비", group: "일반", color: "bg-teal-100 text-teal-700 border-teal-200" },
+  { value: "TRANSPORTATION", label: "교통비", group: "일반", color: "bg-teal-100 text-teal-700 border-teal-200" },
+  { value: "COMMUNICATION", label: "통신비", group: "일반", color: "bg-sky-100 text-sky-700 border-sky-200" },
+  { value: "SUPPLIES", label: "소모품", group: "일반", color: "bg-lime-100 text-lime-700 border-lime-200" },
+  { value: "ENTERTAINMENT", label: "접대비", group: "일반", color: "bg-rose-100 text-rose-700 border-rose-200" },
+  { value: "WELFARE", label: "복리후생", group: "일반", color: "bg-green-100 text-green-700 border-green-200" },
+  { value: "EDUCATION", label: "교육비", group: "일반", color: "bg-violet-100 text-violet-700 border-violet-200" },
+  { value: "SUBSCRIPTION", label: "구독료", group: "일반", color: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200" },
+  { value: "TAX", label: "세금", group: "일반", color: "bg-slate-100 text-slate-700 border-slate-200" },
+  { value: "OTHER_EXPENSE", label: "기타", group: "일반", color: "bg-gray-100 text-gray-700 border-gray-200" },
+  { value: "OTHER", label: "기타", group: "일반", color: "bg-gray-100 text-gray-700 border-gray-200" },
 ] as const;
 
 // 그룹별 카테고리
@@ -145,6 +145,22 @@ export const EXPENSE_CATEGORY_GROUPS = {
   운영: EXPENSE_CATEGORIES.filter(c => c.group === "운영"),
   일반: EXPENSE_CATEGORIES.filter(c => c.group === "일반"),
 } as const;
+
+// 카테고리 색상 가져오기
+export function getCategoryColor(type: "REVENUE" | "EXPENSE", category: string): string {
+  // 인플루언서 정산 특수 케이스
+  if (category === "INFLUENCER_SETTLEMENT") {
+    return "bg-purple-100 text-purple-700 border-purple-200";
+  }
+
+  if (type === "REVENUE") {
+    const found = REVENUE_CATEGORIES.find((c) => c.value === category);
+    return found?.color || "bg-gray-100 text-gray-700 border-gray-200";
+  } else {
+    const found = EXPENSE_CATEGORIES.find((c) => c.value === category);
+    return found?.color || "bg-gray-100 text-gray-700 border-gray-200";
+  }
+}
 
 export const INDUSTRY_OPTIONS = [
   { value: "FOOD", label: "식음료" },
