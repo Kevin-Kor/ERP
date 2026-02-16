@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { fromYear, fromMonth, toYear, toMonth } = body;
+    const { fromYear, fromMonth, toYear, toMonth, type } = body;
 
     if (!fromYear || !fromMonth || !toYear || !toMonth) {
       return NextResponse.json(
@@ -25,12 +25,14 @@ export async function POST(request: NextRequest) {
           gte: fromStartDate,
           lte: fromEndDate,
         },
+        ...(type && { type }), // Add type filter if provided
       },
     });
 
     if (transactions.length === 0) {
+      const typeMsg = type ? ` (type: ${type})` : "";
       return NextResponse.json({
-        message: "No transactions found in the specified month",
+        message: `No transactions found in ${fromYear}-${fromMonth}${typeMsg}`,
         movedCount: 0,
       });
     }
@@ -56,9 +58,15 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(updatePromises);
 
+    const typeMsg = type ? ` ${type.toLowerCase()} transactions` : " transactions";
     return NextResponse.json({
-      message: `Successfully moved ${transactions.length} transactions from ${fromYear}-${fromMonth} to ${toYear}-${toMonth}`,
+      message: `Successfully moved ${transactions.length}${typeMsg} from ${fromYear}-${fromMonth} to ${toYear}-${toMonth}`,
       movedCount: transactions.length,
+      details: {
+        fromMonth: `${fromYear}-${String(fromMonth).padStart(2, "0")}`,
+        toMonth: `${toYear}-${String(toMonth).padStart(2, "0")}`,
+        type: type || "all",
+      },
     });
   } catch (error) {
     console.error("POST /api/transactions/migrate-month error:", error);
