@@ -281,3 +281,16 @@ model TeamTodoTask {
 
   @@index([memberId, columnIndex])
 }
+
+// ==========================================
+// Slack 이벤트 중복 처리 방지
+// ==========================================
+
+// Slack은 같은 이벤트를 재전송할 수 있어 event_id를 기록해 한 번만 처리한다.
+// 오래된 행은 daily-alerts cron이 정리한다.
+model SlackEvent {
+  id        String   @id // Slack event_id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

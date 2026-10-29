@@ -134,6 +134,14 @@ export async function POST(request: NextRequest) {
     const today = new Date();
     const alerts: string[] = [];
 
+    // 0. Slack 중복 방지 기록 정리 (재전송은 수 분 안에 오므로 7일이면 충분)
+    try {
+      const slackEventCutoff = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      await prisma.slackEvent.deleteMany({ where: { createdAt: { lt: slackEventCutoff } } });
+    } catch (error) {
+      console.error("SlackEvent cleanup failed:", error);
+    }
+
     // 1. 정산 마감 알림 조회
     const pendingSettlements = await prisma.projectInfluencer.findMany({
       where: {

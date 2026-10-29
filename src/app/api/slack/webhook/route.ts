@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { verifySlackRequest, sendSlackMessage, formatSuccessMessage, formatErrorMessage } from "@/lib/slack";
 import { parseNaturalLanguage, type ParsedResult } from "@/lib/ai-parser";
 import { prisma } from "@/lib/prisma";
 
-const SLACK_CHANNEL_ID = process.env.SLACK_CHANNEL_ID!;
-const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET!;
+// 응답 후(after) 실행되는 AI 파싱·DB 처리·답장 전송까지 포함한 최대 실행 시간
+export const maxDuration = 60;
 
-// 중복 이벤트 방지를 위한 캐시 (최근 처리한 event_id 저장)
-const processedEvents = new Set<string>();
-const EVENT_CACHE_TTL = 60000; // 60초
+const SLACK_CHANNEL_ID = process.env.SLACK_CHANNEL_ID!;
 
 // 대화 맥락 저장 (follow_up 기능용)
 interface ConversationContext {
@@ -20,14 +19,20 @@ interface ConversationContext {
 const conversationContexts = new Map<string, ConversationContext>();
 const CONTEXT_TTL = 300000; // 5분
 
-function isEventProcessed(eventId: string): boolean {
-  if (processedEvents.has(eventId)) {
+// 같은 이벤트를 두 번 처리하지 않도록 event_id를 DB에 먼저 기록한다.
+// Slack은 3초 안에 응답이 없거나 실패하면 같은 이벤트를 재전송하고,
+// 서버리스 인스턴스끼리는 메모리를 공유하지 않으므로 메모리 캐시로는 막을 수 없다.
+// 처음 기록에 성공한 요청만 true를 받는다.
+async function claimSlackEvent(eventId: string): Promise<boolean> {
+  try {
+    await prisma.slackEvent.create({ data: { id: eventId } });
     return true;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return false;
+    }
+    throw error;
   }
-  processedEvents.add(eventId);
-  // 60초 후 캐시에서 제거
-  setTimeout(() => processedEvents.delete(eventId), EVENT_CACHE_TTL);
-  return false;
 }
 
 // 기본 사용자 ID 가져오기
@@ -934,7 +939,8 @@ async function handleUpdateStatus(data: Record<string, unknown>) {
         where: { id: settlement.id },
         data: {
           paymentStatus: newStatus === "COMPLETED" ? "COMPLETED" : "PENDING",
-          paidAt: newStatus === "COMPLETED" ? new Date() : null,
+          // 스키마에 없는 paidAt을 쓰던 탓에 Slack 정산 완료 처리가 항상 실패했다
+          paymentDate: newStatus === "COMPLETED" ? new Date() : null,
         },
         include: {
           Influencer: { select: { name: true } },
@@ -1277,105 +1283,109 @@ async function handleGenerateReport(data: Record<string, unknown>) {
   }
 }
 
-// Slack URL 검증 (Event Subscriptions 설정 시 필요)
-function handleUrlVerification(body: { challenge: string }) {
-  return NextResponse.json({ challenge: body.challenge });
+// 채널 메시지 1건 처리: AI 파싱 → 인텐트 처리 → 결과 답장
+// POST가 Slack에 200을 돌려준 뒤 after()로 실행된다.
+async function processChannelMessage(userMessage: string) {
+  try {
+    const parsed = await parseNaturalLanguage(userMessage);
+    console.log("[Slack Webhook] AI 파싱 결과:", parsed.intent, parsed.confidence);
+
+    // 신뢰도 낮으면 안내 메시지 (threshold 0.3으로 낮춤)
+    if (parsed.confidence < 0.3 || parsed.intent === "unknown") {
+      await sendSlackMessage(
+        SLACK_CHANNEL_ID,
+        "요청을 이해하지 못했습니다. 다음과 같이 입력해보세요:\n" +
+          "- 지출: \"15000원 커피 지출\"\n" +
+          "- 일정: \"15일 미팅 일정\"\n" +
+          "- 인플루언서: \"인플루언서 OOO 추가\"\n" +
+          "- 현황: \"이번 달 현황\""
+      );
+      return;
+    }
+
+    // 기본 사용자 ID 조회
+    const userId = await getDefaultUserId();
+
+    // 인텐트 처리
+    const result = await handleIntent(parsed, userId);
+
+    // 결과 메시지 전송
+    if (result.success) {
+      const message = formatSuccessMessage(result.intent!, result.data!);
+      await sendSlackMessage(SLACK_CHANNEL_ID, message);
+
+      // 대화 맥락 저장 (follow_up 기능용)
+      saveConversationContext(
+        SLACK_CHANNEL_ID,
+        result.intent!,
+        parsed.data,
+        result.data as Record<string, unknown>
+      );
+    } else {
+      const errorMessage =
+        "message" in result && typeof result.message === "string"
+          ? result.message
+          : "요청을 처리하지 못했습니다.";
+      await sendSlackMessage(SLACK_CHANNEL_ID, formatErrorMessage(errorMessage));
+    }
+  } catch (error) {
+    console.error("[Slack Webhook] 메시지 처리 오류:", error);
+    try {
+      await sendSlackMessage(SLACK_CHANNEL_ID, formatErrorMessage("요청 처리 중 오류가 발생했습니다."));
+    } catch {
+      // 답장 실패는 로그만 남긴다 (sendSlackMessage가 이미 기록)
+    }
+  }
 }
 
 // POST 핸들러 - Slack 이벤트 수신
 export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
-    const body = JSON.parse(rawBody);
 
-    console.log("[Slack Webhook] Received:", JSON.stringify(body, null, 2));
-
-    // URL 검증 (Slack 앱 설정 시)
-    if (body.type === "url_verification") {
-      return handleUrlVerification(body);
-    }
-
-    // 서명 검증
+    // 서명 검증을 가장 먼저 한다 (url_verification 요청도 Slack이 서명해서 보낸다)
     const timestamp = request.headers.get("x-slack-request-timestamp") || "";
     const signature = request.headers.get("x-slack-signature") || "";
 
-    if (!verifySlackRequest(SLACK_SIGNING_SECRET, rawBody, timestamp, signature)) {
+    if (!verifySlackRequest(process.env.SLACK_SIGNING_SECRET, rawBody, timestamp, signature)) {
       console.error("[Slack Webhook] 서명 검증 실패");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
-    console.log("[Slack Webhook] 서명 검증 통과");
+    const body = JSON.parse(rawBody);
 
-    // 이벤트 처리
-    if (body.type === "event_callback") {
-      const event = body.event;
-      const eventId = body.event_id;
+    // URL 검증 (Event Subscriptions 설정 시 필요)
+    if (body.type === "url_verification") {
+      return NextResponse.json({ challenge: body.challenge });
+    }
 
-      // 중복 이벤트 체크
-      if (isEventProcessed(eventId)) {
+    if (body.type !== "event_callback") {
+      return NextResponse.json({ ok: true });
+    }
+
+    const event = body.event;
+    const eventId: unknown = body.event_id;
+
+    // 봇 메시지 무시 (무한 루프 방지)
+    if (event?.bot_id || event?.subtype === "bot_message") {
+      return NextResponse.json({ ok: true });
+    }
+
+    // 특정 채널만 처리
+    if (event?.channel !== SLACK_CHANNEL_ID) {
+      return NextResponse.json({ ok: true });
+    }
+
+    if (event.type === "message" && event.text && typeof eventId === "string") {
+      if (!(await claimSlackEvent(eventId))) {
         console.log("[Slack Webhook] 중복 이벤트 무시:", eventId);
         return NextResponse.json({ ok: true });
       }
 
-      console.log("[Slack Webhook] Event:", event.type, "Channel:", event.channel, "Expected:", SLACK_CHANNEL_ID);
-
-      // 봇 메시지 무시 (무한 루프 방지)
-      if (event.bot_id || event.subtype === "bot_message") {
-        console.log("[Slack Webhook] 봇 메시지 무시");
-        return NextResponse.json({ ok: true });
-      }
-
-      // 특정 채널만 처리
-      if (event.channel !== SLACK_CHANNEL_ID) {
-        console.log("[Slack Webhook] 채널 불일치 - 무시:", event.channel, "!==", SLACK_CHANNEL_ID);
-        return NextResponse.json({ ok: true });
-      }
-
-      // 메시지 이벤트 처리
-      if (event.type === "message" && event.text) {
-        const userMessage = event.text;
-        console.log("[Slack Webhook] 메시지 수신:", userMessage);
-
-        // AI 파싱
-        const parsed = await parseNaturalLanguage(userMessage);
-        console.log("[Slack Webhook] AI 파싱 결과:", JSON.stringify(parsed, null, 2));
-
-        // 신뢰도 낮으면 안내 메시지 (threshold 0.3으로 낮춤)
-        if (parsed.confidence < 0.3 || parsed.intent === "unknown") {
-          console.log("[Slack Webhook] 신뢰도 낮음 또는 unknown:", parsed.confidence, parsed.intent);
-          await sendSlackMessage(
-            SLACK_CHANNEL_ID,
-            "요청을 이해하지 못했습니다. 다음과 같이 입력해보세요:\n" +
-              "- 지출: \"15000원 커피 지출\"\n" +
-              "- 일정: \"15일 미팅 일정\"\n" +
-              "- 인플루언서: \"인플루언서 OOO 추가\"\n" +
-              "- 현황: \"이번 달 현황\""
-          );
-          return NextResponse.json({ ok: true });
-        }
-
-        // 기본 사용자 ID 조회
-        const userId = await getDefaultUserId();
-
-        // 인텐트 처리
-        const result = await handleIntent(parsed, userId);
-
-        // 결과 메시지 전송
-        if (result.success) {
-          const message = formatSuccessMessage(result.intent!, result.data!);
-          await sendSlackMessage(SLACK_CHANNEL_ID, message);
-
-          // 대화 맥락 저장 (follow_up 기능용)
-          saveConversationContext(
-            SLACK_CHANNEL_ID,
-            result.intent!,
-            parsed.data,
-            result.data as Record<string, unknown>
-          );
-        } else {
-          await sendSlackMessage(SLACK_CHANNEL_ID, formatErrorMessage(result.message!));
-        }
-      }
+      console.log("[Slack Webhook] 메시지 이벤트 접수:", eventId);
+      // Slack에는 바로 200을 돌려주고(3초 제한), 처리는 응답 후에 이어서 실행
+      const userMessage: string = event.text;
+      after(() => processChannelMessage(userMessage));
     }
 
     return NextResponse.json({ ok: true });
@@ -1390,6 +1400,5 @@ export async function GET() {
   return NextResponse.json({
     status: "ok",
     message: "Slack webhook endpoint is running",
-    channel: SLACK_CHANNEL_ID,
   });
 }
