@@ -297,8 +297,16 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                     <ProjectCollaborators
                         projectId={project.id}
                         initialCollaborators={project.ProjectInfluencer.map((pi) => ({
-                            ...pi,
-                            influencer: pi.Influencer,
+                            id: pi.id,
+                            fee: pi.fee,
+                            paymentStatus: pi.paymentStatus,
+                            // 클라이언트 컴포넌트는 문자열을 기대한다 (Date를 넘기면 .split에서 오류)
+                            paymentDueDate: pi.paymentDueDate ? pi.paymentDueDate.toISOString() : null,
+                            influencer: {
+                                id: pi.Influencer.id,
+                                name: pi.Influencer.name,
+                                instagramId: pi.Influencer.instagramId,
+                            },
                         }))}
                     />
                 </TabsContent>

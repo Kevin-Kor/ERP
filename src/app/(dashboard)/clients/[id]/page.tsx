@@ -266,8 +266,8 @@ export default function ClientDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "payment",
-          month,
           ...payment,
+          month,
           [field]: value,
         }),
       });

@@ -236,7 +236,7 @@ export function formatSuccessMessage(intent: string, data: Record<string, unknow
         return `🔍 "${d.searchTerm}" 검색 결과가 없습니다.`;
       }
 
-      const results = d.results as Record<string, unknown[]>;
+      const results = d.results as Record<string, Record<string, unknown>[] | undefined>;
       let msg = `🔍 *"${d.searchTerm}" 검색 결과* (${d.totalResults}건)\n\n`;
 
       if (results.clients) {

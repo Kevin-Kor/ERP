@@ -31,6 +31,61 @@ interface Notification {
   link: string;
 }
 
+// 대시보드 요약에서 헤더 알림 목록을 만든다
+async function loadNotifications(): Promise<Notification[] | null> {
+  const res = await fetch("/api/dashboard");
+  const data = await res.json();
+
+  if (data.error) return null;
+
+  const newNotifications: Notification[] = [];
+
+  // 미수금 알림
+  if (data.actions?.unpaidCount > 0) {
+    newNotifications.push({
+      id: "unpaid",
+      type: "unpaid",
+      title: `미수금 ${data.actions.unpaidCount}건`,
+      description: `총 ${formatCurrencyCompact(data.actions.unpaidAmount)} 미수금`,
+      link: "/finance?filter=unpaid",
+    });
+  }
+
+  // 인플루언서 정산 알림
+  if (data.actions?.pendingSettlementsCount > 0) {
+    newNotifications.push({
+      id: "settlement",
+      type: "settlement",
+      title: `인플루언서 정산 ${data.actions.pendingSettlementsCount}건`,
+      description: `총 ${formatCurrencyCompact(data.actions.pendingSettlementsAmount)} 미정산`,
+      link: "/settlements",
+    });
+  }
+
+  // 프로젝트 마감 알림
+  if (data.projects?.endingTodayCount > 0) {
+    newNotifications.push({
+      id: "deadline-today",
+      type: "deadline",
+      title: `오늘 마감 ${data.projects.endingTodayCount}건`,
+      description: "오늘 종료 예정인 프로젝트",
+      link: "/projects",
+    });
+  }
+
+  if (data.projects?.endingThisWeekCount > 0) {
+    newNotifications.push({
+      id: "deadline-week",
+      type: "deadline",
+      title: `이번 주 마감 ${data.projects.endingThisWeekCount}건`,
+      description: "이번 주 종료 예정 프로젝트",
+      link: "/projects",
+    });
+  }
+
+  return newNotifications;
+}
+
 export function Header({ onMenuClick }: HeaderProps) {
   const { data: session } = useSession();
   const [quickTransactionOpen, setQuickTransactionOpen] = useState(false);
@@ -38,67 +93,20 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
-    fetchNotifications();
+    let cancelled = false;
+    loadNotifications()
+      .then((list) => {
+        if (cancelled || !list) return;
+        setNotifications(list);
+        setNotificationCount(list.length);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch notifications:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  async function fetchNotifications() {
-    try {
-      const res = await fetch("/api/dashboard");
-      const data = await res.json();
-
-      if (data.error) return;
-
-      const newNotifications: Notification[] = [];
-
-      // 미수금 알림
-      if (data.actions?.unpaidCount > 0) {
-        newNotifications.push({
-          id: "unpaid",
-          type: "unpaid",
-          title: `미수금 ${data.actions.unpaidCount}건`,
-          description: `총 ${formatCurrencyCompact(data.actions.unpaidAmount)} 미수금`,
-          link: "/finance?filter=unpaid",
-        });
-      }
-
-      // 인플루언서 정산 알림
-      if (data.actions?.pendingSettlementsCount > 0) {
-        newNotifications.push({
-          id: "settlement",
-          type: "settlement",
-          title: `인플루언서 정산 ${data.actions.pendingSettlementsCount}건`,
-          description: `총 ${formatCurrencyCompact(data.actions.pendingSettlementsAmount)} 미정산`,
-          link: "/settlements",
-        });
-      }
-
-      // 프로젝트 마감 알림
-      if (data.projects?.endingTodayCount > 0) {
-        newNotifications.push({
-          id: "deadline-today",
-          type: "deadline",
-          title: `오늘 마감 ${data.projects.endingTodayCount}건`,
-          description: "오늘 종료 예정인 프로젝트",
-          link: "/projects",
-        });
-      }
-
-      if (data.projects?.endingThisWeekCount > 0) {
-        newNotifications.push({
-          id: "deadline-week",
-          type: "deadline",
-          title: `이번 주 마감 ${data.projects.endingThisWeekCount}건`,
-          description: "이번 주 종료 예정 프로젝트",
-          link: "/projects",
-        });
-      }
-
-      setNotifications(newNotifications);
-      setNotificationCount(newNotifications.length);
-    } catch (error) {
-      console.error("Failed to fetch notifications:", error);
-    }
-  }
 
   const getNotificationBadge = (type: string) => {
     switch (type) {

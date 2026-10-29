@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     // 월별 매출/지출 계산
-    const calcMonthStats = (transactions: typeof thisMonthTx) => {
+    const calcMonthStats = (transactions: { type: string; amount: number }[]) => {
       const revenue = transactions.filter((t) => t.type === "REVENUE").reduce((sum, t) => sum + t.amount, 0);
       const expense = transactions.filter((t) => t.type === "EXPENSE").reduce((sum, t) => sum + t.amount, 0);
       return { revenue, expense, profit: revenue - expense };

@@ -31,7 +31,8 @@ const clientSchema = z.object({
   industry: z.string().optional(),
   status: z.enum(["ACTIVE", "DORMANT", "TERMINATED"]),
   memo: z.string().optional(),
-  isFixedVendor: z.boolean().default(false),
+  // 기본값은 defaultValues에서 준다 (.default()를 쓰면 입력/출력 타입이 달라져 resolver 타입이 깨진다)
+  isFixedVendor: z.boolean(),
   monthlyFee: z.number().nullable().optional(), // 만원 단위로 저장
 });
 
