@@ -1,31 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/api-auth";
-import { getSupabaseAdmin } from "@/lib/supabase";
-
-// Allowed file types
-const ALLOWED_TYPES = [
-  // PDF
-  "application/pdf",
-  // Word
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  // Excel
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  // CSV
-  "text/csv",
-  // Images
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-  // PowerPoint
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  // Text
-  "text/plain",
-];
+import {
+  ALLOWED_DOCUMENT_TYPES,
+  buildStoragePath,
+  getFileExtension,
+  removeDocumentFile,
+  uploadDocumentFile,
+} from "@/lib/document-storage";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -35,14 +17,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File;
-    const documentId = formData.get("documentId") as string;
+    const file = formData.get("file");
+    const documentId = formData.get("documentId");
 
-    if (!file) {
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    if (!documentId) {
+    if (typeof documentId !== "string" || !documentId) {
       return NextResponse.json({ error: "No document ID provided" }, { status: 400 });
     }
 
@@ -54,21 +36,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check file type (be lenient - allow if type is empty or matches)
-    if (file.type && !ALLOWED_TYPES.includes(file.type)) {
-      // Try to determine by extension
-      const ext = file.name.split(".").pop()?.toLowerCase();
-      const allowedExtensions = [
-        "pdf", "doc", "docx", "xls", "xlsx", "csv",
-        "jpg", "jpeg", "png", "gif", "webp",
-        "ppt", "pptx", "txt"
-      ];
-      if (!ext || !allowedExtensions.includes(ext)) {
-        return NextResponse.json(
-          { error: "지원하지 않는 파일 형식입니다." },
-          { status: 400 }
-        );
-      }
+    // 확장자 화이트리스트는 항상 적용하고, Content-Type도 확장자 기준으로 정한다
+    const extension = getFileExtension(file.name);
+    if (!extension || !ALLOWED_DOCUMENT_TYPES[extension]) {
+      return NextResponse.json(
+        { error: "지원하지 않는 파일 형식입니다." },
+        { status: 400 }
+      );
     }
 
     // Verify document exists
@@ -80,52 +54,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const extension = file.name.split(".").pop() || "file";
-    const safeDocNumber = document.docNumber.replace(/[^a-zA-Z0-9-]/g, "_");
-    const filename = `${safeDocNumber}_${timestamp}.${extension}`;
-    const storagePath = `documents/${filename}`;
+    const storagePath = buildStoragePath(document.docNumber, extension);
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Convert file to buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Get Supabase client
-    const supabase = getSupabaseAdmin();
-
-    // Upload to Supabase Storage
-    const { error } = await supabase.storage
-      .from("erp-files")
-      .upload(storagePath, buffer, {
-        contentType: file.type || "application/octet-stream",
-        upsert: true,
-      });
-
-    if (error) {
+    try {
+      await uploadDocumentFile(storagePath, buffer, ALLOWED_DOCUMENT_TYPES[extension]);
+    } catch (error) {
       console.error("Supabase storage error:", error);
       return NextResponse.json(
-        { error: "파일 업로드에 실패했습니다: " + error.message },
+        { error: "파일 업로드에 실패했습니다." },
         { status: 500 }
       );
     }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("erp-files")
-      .getPublicUrl(storagePath);
-
-    const publicUrl = urlData.publicUrl;
-
-    // Update document with file path
+    // 공개 URL 대신 버킷 내부 경로를 저장한다. 열람은 /api/documents/[id]/file (서명 URL)
     await prisma.document.update({
       where: { id: documentId },
-      data: { filePath: publicUrl },
+      data: { filePath: storagePath },
     });
+
+    // 교체된 이전 파일 정리 (실패해도 업로드 결과에는 영향 없음)
+    if (document.filePath) {
+      try {
+        await removeDocumentFile(document.filePath);
+      } catch (error) {
+        console.error("Previous file cleanup failed:", document.filePath, error);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      filePath: publicUrl,
+      filePath: storagePath,
     });
   } catch (error) {
     console.error("POST /api/documents/upload error:", error);

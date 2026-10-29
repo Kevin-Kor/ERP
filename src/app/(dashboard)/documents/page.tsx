@@ -144,13 +144,9 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleDownload = (filePath: string, docNumber: string) => {
-    const link = document.createElement("a");
-    link.href = filePath;
-    link.download = `${docNumber}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // 파일은 로그인 확인 후 짧게 만료되는 서명 URL로 열린다 (/api/documents/[id]/file)
+  const handleDownload = (documentId: string) => {
+    window.location.href = `/api/documents/${documentId}/file?download=1`;
   };
 
   const getTypeBadge = (type: string) => {
@@ -292,7 +288,7 @@ export default function DocumentsPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handleDownload(doc.filePath!, doc.docNumber)}
+                          onClick={() => handleDownload(doc.id)}
                         >
                           <Download className="h-4 w-4 mr-1" />
                           다운로드
@@ -332,7 +328,7 @@ export default function DocumentsPage() {
                           {doc.filePath && (
                             <>
                               <DropdownMenuItem
-                                onClick={() => window.open(doc.filePath!, "_blank")}
+                                onClick={() => window.open(`/api/documents/${doc.id}/file`, "_blank")}
                               >
                                 <ExternalLink className="h-4 w-4 mr-2" />
                                 새 탭에서 보기

@@ -47,6 +47,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    // filePath는 업로드 API만 설정한다
+    delete body.filePath;
 
     // Generate document number if not provided
     let docNumber = body.docNumber;

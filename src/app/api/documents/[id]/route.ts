@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/api-auth";
-import fs from "fs/promises";
-import path from "path";
+import { removeDocumentFile } from "@/lib/document-storage";
 
 export async function GET(
   request: NextRequest,
@@ -60,7 +59,7 @@ export async function PATCH(
     if (body.issueDate !== undefined) updateData.issueDate = new Date(body.issueDate);
     if (body.amount !== undefined) updateData.amount = body.amount;
     if (body.status !== undefined) updateData.status = body.status;
-    if (body.filePath !== undefined) updateData.filePath = body.filePath;
+    // filePath는 업로드 API(/api/documents/upload)만 설정한다. 임의 경로 주입 방지.
     if (body.memo !== undefined) updateData.memo = body.memo;
 
     const document = await prisma.document.update({
@@ -97,21 +96,18 @@ export async function DELETE(
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    // Delete associated file if exists
-    if (document.filePath) {
-      try {
-        const filePath = path.join(process.cwd(), "public", document.filePath);
-        await fs.unlink(filePath);
-      } catch (fileError) {
-        // File might not exist, continue with deletion
-        console.log("File deletion skipped:", fileError);
-      }
-    }
-
-    // Delete document from database
+    // Delete document from database first, so a storage failure never leaves
+    // a record pointing at a missing file
     await prisma.document.delete({
       where: { id },
     });
+
+    // Delete associated file from Supabase Storage
+    try {
+      await removeDocumentFile(document.filePath);
+    } catch (fileError) {
+      console.error("Storage file deletion failed:", document.filePath, fileError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
