@@ -186,6 +186,11 @@ model User {
   googleTokenExpiry  DateTime? // Token expiry time
   googleCalendarId   String? // Selected Google Calendar ID
   googleSyncEnabled  Boolean         @default(false) // Enable/disable sync
+  // Google 푸시 알림(watch) 채널. 웹훅은 채널 ID로 사용자를 찾고 토큰을 대조한다.
+  googleChannelId         String?   @unique
+  googleChannelResourceId String?
+  googleChannelToken      String?
+  googleChannelExpiry     DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   Activity           Activity[]
@@ -280,4 +285,17 @@ model TeamTodoTask {
   Member      TeamTodoMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@index([memberId, columnIndex])
+}
+
+// ==========================================
+// Slack 이벤트 중복 처리 방지
+// ==========================================
+
+// Slack은 같은 이벤트를 재전송할 수 있어 event_id를 기록해 한 번만 처리한다.
+// 오래된 행은 daily-alerts cron이 정리한다.
+model SlackEvent {
+  id        String   @id // Slack event_id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

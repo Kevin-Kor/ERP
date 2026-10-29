@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
+import { normalizeSettlementStatus, parseSettlementStatus } from "@/lib/settlement-status";
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -14,7 +19,11 @@ export async function PATCH(
 
     // 기본 필드
     if (body.paymentStatus !== undefined) {
-      updateData.paymentStatus = body.paymentStatus;
+      const status = parseSettlementStatus(body.paymentStatus);
+      if (!status) {
+        return NextResponse.json({ error: "Invalid paymentStatus" }, { status: 400 });
+      }
+      updateData.paymentStatus = status;
     }
     if (body.paymentDueDate !== undefined) {
       updateData.paymentDueDate = body.paymentDueDate
@@ -73,6 +82,7 @@ export async function PATCH(
 
     return NextResponse.json({
       ...settlement,
+      paymentStatus: normalizeSettlementStatus(settlement.paymentStatus),
       influencer: settlement.Influencer,
       project: {
         ...settlement.Project,
@@ -92,6 +102,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { id } = await params;
 

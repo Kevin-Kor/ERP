@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import type { SettlementStatus } from "@/lib/settlement-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,7 +83,6 @@ interface FixedVendor {
   monthlyFee: number | null;
 }
 
-type SettlementStatus = "pending" | "in_progress" | "completed";
 
 interface SettlementSummary {
   statusTotals: Record<SettlementStatus, { amount: number; count: number }>;
@@ -167,9 +167,9 @@ export default function FinancePage() {
   const [selectedPaymentDate, setSelectedPaymentDate] = useState(new Date().toISOString().split("T")[0]);
 
   const settlementStatusOptions: { value: SettlementStatus; label: string }[] = [
-    { value: "pending", label: "예정" },
-    { value: "in_progress", label: "진행 중" },
-    { value: "completed", label: "완료" },
+    { value: "PENDING", label: "예정" },
+    { value: "REQUESTED", label: "진행 중" },
+    { value: "COMPLETED", label: "완료" },
   ];
 
   // 월 옵션 생성 (최근 24개월)
@@ -487,7 +487,7 @@ export default function FinancePage() {
   const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
 
   // 정산 완료된 금액을 지출에 합산
-  const settlementExpense = settlementSummary?.statusTotals.completed.amount || 0;
+  const settlementExpense = settlementSummary?.statusTotals.COMPLETED.amount || 0;
   const totalExpenseWithSettlement = totalExpense + settlementExpense;
 
   const netProfit = totalRevenue - totalExpenseWithSettlement;
@@ -519,7 +519,7 @@ export default function FinancePage() {
 
     // 인플루언서 정산 완료 금액 추가
     if (settlementExpense > 0) {
-      const settlementCount = settlementSummary?.statusTotals.completed.count || 0;
+      const settlementCount = settlementSummary?.statusTotals.COMPLETED.count || 0;
       grouped["INFLUENCER_SETTLEMENT"] = {
         label: "정산",
         total: settlementExpense,

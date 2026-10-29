@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 
 // GET - 전체 팀 To-Do 데이터 조회
 export async function GET() {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const [columns, members] = await Promise.all([
       prisma.teamTodoColumn.findMany({
@@ -78,6 +82,9 @@ export async function GET() {
 
 // POST - 새 항목 추가 (멤버, 컬럼, 태스크)
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const { type, ...data } = body;
@@ -166,6 +173,9 @@ export async function POST(request: NextRequest) {
 
 // PATCH - 업데이트
 export async function PATCH(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const { type, ...data } = body;
@@ -234,6 +244,9 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE - 삭제
 export async function DELETE(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");

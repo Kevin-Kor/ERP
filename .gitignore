@@ -45,3 +45,7 @@ next-env.d.ts
 
 # external projects
 /Downloads
+
+# local SQLite databases (never commit)
+*.db
+*.db-journal

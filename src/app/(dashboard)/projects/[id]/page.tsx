@@ -30,6 +30,7 @@ import {
 import { formatCurrency, formatDate, STATUS_LABELS, PLATFORM_OPTIONS, CONTENT_TYPE_OPTIONS, VIDEO_STYLE_OPTIONS } from "@/lib/utils";
 import { DeleteProjectButton } from "./delete-project-button";
 import { ProjectCollaborators } from "./project-collaborators";
+import { normalizeSettlementStatus } from "@/lib/settlement-status";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -105,7 +106,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
     const totalInfluencerCost = project.ProjectInfluencer.reduce((sum, pi) => sum + pi.fee, 0);
     const paidAmount = project.ProjectInfluencer
-        .filter(pi => (pi.paymentStatus || "").toLowerCase() === "completed")
+        .filter(pi => normalizeSettlementStatus(pi.paymentStatus) === "COMPLETED")
         .reduce((sum, pi) => sum + pi.fee, 0);
 
     return (
@@ -297,8 +298,16 @@ export default async function ProjectDetailPage({ params }: PageProps) {
                     <ProjectCollaborators
                         projectId={project.id}
                         initialCollaborators={project.ProjectInfluencer.map((pi) => ({
-                            ...pi,
-                            influencer: pi.Influencer,
+                            id: pi.id,
+                            fee: pi.fee,
+                            paymentStatus: pi.paymentStatus,
+                            // 클라이언트 컴포넌트는 문자열을 기대한다 (Date를 넘기면 .split에서 오류)
+                            paymentDueDate: pi.paymentDueDate ? pi.paymentDueDate.toISOString() : null,
+                            influencer: {
+                                id: pi.Influencer.id,
+                                name: pi.Influencer.name,
+                                instagramId: pi.Influencer.instagramId,
+                            },
                         }))}
                     />
                 </TabsContent>

@@ -30,6 +30,9 @@ export default async function EditClientPage({ params }: PageProps) {
     industry: client.industry || "",
     status: client.status as "ACTIVE" | "DORMANT" | "TERMINATED",
     memo: client.memo || "",
+    // 빠지면 저장 시 고정업체 설정이 false로 초기화된다
+    isFixedVendor: client.isFixedVendor,
+    monthlyFee: client.monthlyFee,
   };
 
   return (

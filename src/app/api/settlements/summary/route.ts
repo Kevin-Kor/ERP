@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
+import { normalizeSettlementStatus, type SettlementStatus } from "@/lib/settlement-status";
 
-type StatusKey = "pending" | "in_progress" | "completed";
-
-const normalizeStatus = (status?: string): StatusKey => {
-    const value = (status || "").toLowerCase();
-    if (value === "completed") return "completed";
-    if (value === "in_progress" || value === "requested") return "in_progress";
-    return "pending";
-};
 
 export async function GET(request: NextRequest) {
+    const auth = await requireSession();
+    if (auth.response) return auth.response;
+
     try {
         const { searchParams } = new URL(request.url);
         const month = searchParams.get("month"); // YYYY-MM format
@@ -81,14 +78,14 @@ export async function GET(request: NextRequest) {
             }),
         ]);
 
-        const statusTotals: Record<StatusKey, { amount: number; count: number }> = {
-            pending: { amount: 0, count: 0 },
-            in_progress: { amount: 0, count: 0 },
-            completed: { amount: 0, count: 0 },
+        const statusTotals: Record<SettlementStatus, { amount: number; count: number }> = {
+            PENDING: { amount: 0, count: 0 },
+            REQUESTED: { amount: 0, count: 0 },
+            COMPLETED: { amount: 0, count: 0 },
         };
 
         statusGroups.forEach((group) => {
-            const key = normalizeStatus(group.paymentStatus) as StatusKey;
+            const key = normalizeSettlementStatus(group.paymentStatus);
             statusTotals[key].amount += group._sum.fee || 0;
             statusTotals[key].count += group._count._all;
         });

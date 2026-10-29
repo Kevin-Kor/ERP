@@ -89,12 +89,16 @@ npm run dev
 
 ### 환경 변수
 
-`.env` 파일을 생성하고 다음 변수를 설정하세요:
+`.env.example`을 `.env`로 복사한 뒤 값을 채우세요. 최소 필요 항목:
 
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://user:password@localhost:5432/erp_db"
+DIRECT_URL="postgresql://user:password@localhost:5432/erp_db"
 NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_SECRET="openssl rand -base64 32 결과"
+
+# npm run db:seed 에서 만드는 관리자 계정 비밀번호 (10자 이상, 코드에 기본값 없음)
+SEED_ADMIN_PASSWORD="..."
 ```
 
 ## 스크립트

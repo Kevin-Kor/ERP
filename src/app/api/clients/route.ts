@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 import { z } from "zod";
 
 const clientSchema = z.object({
@@ -18,6 +19,9 @@ const clientSchema = z.object({
 
 // GET - List all clients
 export async function GET(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -95,6 +99,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new client
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const validatedData = clientSchema.parse(body);

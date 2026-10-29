@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
+import { settlementStatusInput, type SettlementStatus } from "@/lib/settlement-status";
 
 // GET - List all influencers
 export async function GET(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -59,23 +64,41 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new influencer
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const { projectAssignments = [], ...influencerData } = body;
+
+    // 정산 상태는 대문자(PENDING/REQUESTED/COMPLETED)로 통일해 저장한다
+    const assignments: { projectId: string; fee: number; paymentStatus: SettlementStatus }[] = [];
+    for (const assignment of Array.isArray(projectAssignments) ? projectAssignments : []) {
+      const status = settlementStatusInput.safeParse(assignment?.paymentStatus);
+      if (!status.success) {
+        return NextResponse.json({ error: "Invalid paymentStatus" }, { status: 400 });
+      }
+      assignments.push({
+        projectId: assignment.projectId,
+        fee: Number(assignment.fee) || 0,
+        paymentStatus: status.data,
+      });
+    }
 
     const influencer = await prisma.influencer.create({
       data: influencerData,
     });
 
-    if (Array.isArray(projectAssignments) && projectAssignments.length > 0) {
-      const normalizedAssignments = projectAssignments.map((assignment: any) => ({
-        projectId: assignment.projectId,
-        influencerId: influencer.id,
-        fee: Number(assignment.fee) || 0,
-        paymentStatus: (assignment.paymentStatus || "pending").toLowerCase(),
-      }));
-
-      await prisma.projectInfluencer.createMany({ data: normalizedAssignments, skipDuplicates: true });
+    if (assignments.length > 0) {
+      const now = new Date();
+      await prisma.projectInfluencer.createMany({
+        data: assignments.map((assignment) => ({
+          ...assignment,
+          influencerId: influencer.id,
+          paymentDate: assignment.paymentStatus === "COMPLETED" ? now : null,
+        })),
+        skipDuplicates: true,
+      });
     }
 
     return NextResponse.json(influencer, { status: 201 });

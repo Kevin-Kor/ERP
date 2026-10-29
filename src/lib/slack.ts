@@ -18,16 +18,26 @@ export async function sendSlackMessage(channel: string, text: string, blocks?: u
   }
 }
 
-// Slack 요청 서명 검증
+// Slack 요청 서명 검증 (https://api.slack.com/authentication/verifying-requests-from-slack)
+const SLACK_MAX_REQUEST_AGE_SECONDS = 60 * 5;
+
 export function verifySlackRequest(
-  signingSecret: string,
+  signingSecret: string | undefined,
   requestBody: string,
   timestamp: string,
   signature: string
 ): boolean {
-  // 5분 이상 된 요청은 거부 (replay attack 방지)
-  const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 60 * 5;
-  if (parseInt(timestamp) < fiveMinutesAgo) {
+  if (!signingSecret || !timestamp || !signature) {
+    return false;
+  }
+
+  // 5분 이상 차이 나는 요청은 거부 (replay attack 방지). 숫자가 아니면 거부
+  const requestTime = Number(timestamp);
+  if (!Number.isInteger(requestTime)) {
+    return false;
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - requestTime) > SLACK_MAX_REQUEST_AGE_SECONDS) {
     return false;
   }
 
@@ -37,10 +47,13 @@ export function verifySlackRequest(
     .update(sigBaseString)
     .digest("hex")}`;
 
-  return crypto.timingSafeEqual(
-    Buffer.from(mySignature),
-    Buffer.from(signature)
-  );
+  const expected = Buffer.from(mySignature);
+  const received = Buffer.from(signature);
+  // 길이가 다르면 timingSafeEqual이 예외를 던지므로 먼저 비교
+  if (expected.length !== received.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expected, received);
 }
 
 // 금액 포맷팅 헬퍼
@@ -236,7 +249,7 @@ export function formatSuccessMessage(intent: string, data: Record<string, unknow
         return `🔍 "${d.searchTerm}" 검색 결과가 없습니다.`;
       }
 
-      const results = d.results as Record<string, unknown[]>;
+      const results = d.results as Record<string, Record<string, unknown>[] | undefined>;
       let msg = `🔍 *"${d.searchTerm}" 검색 결과* (${d.totalResults}건)\n\n`;
 
       if (results.clients) {

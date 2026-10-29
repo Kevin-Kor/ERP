@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/api-auth";
 
-// POST - Move transactions from one month to another
+// POST - Move transactions from one month to another (관리자 전용, 화면에서 호출하지 않는 운영 도구)
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const { fromYear, fromMonth, toYear, toMonth, type } = body;

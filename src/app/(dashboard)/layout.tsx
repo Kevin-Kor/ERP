@@ -2,9 +2,11 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useSyncExternalStore, Suspense } from "react";
 import { MainLayout } from "@/components/layout/main-layout";
 import { Toaster } from "@/components/ui/toaster";
+
+const subscribeNoop = () => () => {};
 
 export default function DashboardLayout({
   children,
@@ -13,11 +15,12 @@ export default function DashboardLayout({
 }) {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // 서버 렌더/하이드레이션 중에는 false, 이후 클라이언트에서는 true (effect 안 setState 없이)
+  const mounted = useSyncExternalStore(
+    subscribeNoop,
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
     if (status === "unauthenticated") {
