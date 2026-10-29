@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/api-auth";
-
-const normalizeStatus = (status?: string) => {
-  const value = (status || "").toLowerCase();
-  if (value === "completed") return "completed";
-  if (value === "in_progress" || value === "requested") return "in_progress";
-  return "pending";
-};
+import {
+  normalizeSettlementStatus,
+  settlementStatusInput,
+  type SettlementStatus,
+} from "@/lib/settlement-status";
 
 export async function GET(
   request: NextRequest,
@@ -46,7 +44,7 @@ export async function GET(
       ...influencer,
       projectInfluencers: influencer.ProjectInfluencer.map(pi => ({
         ...pi,
-        paymentStatus: normalizeStatus(pi.paymentStatus),
+        paymentStatus: normalizeSettlementStatus(pi.paymentStatus),
         project: {
           ...pi.Project,
           client: pi.Project.Client,
@@ -76,18 +74,48 @@ export async function PATCH(
     const body = await request.json();
     const { projectAssignments, ...influencerData } = body;
 
+    // 배정 정보 검증을 먼저 한다 (잘못된 상태값이면 아무것도 저장하지 않음)
+    const assignments: {
+      projectId: string;
+      fee: number;
+      paymentStatus: SettlementStatus;
+      // undefined면 기존 마감일 유지 (수정 화면은 마감일을 보내지 않는다)
+      paymentDueDate: Date | null | undefined;
+    }[] = [];
+    if (Array.isArray(projectAssignments)) {
+      for (const assignment of projectAssignments) {
+        const status = settlementStatusInput.safeParse(assignment?.paymentStatus);
+        if (!status.success) {
+          return NextResponse.json({ error: "Invalid paymentStatus" }, { status: 400 });
+        }
+        assignments.push({
+          projectId: assignment.projectId,
+          fee: Number(assignment.fee) || 0,
+          paymentStatus: status.data,
+          paymentDueDate:
+            assignment.paymentDueDate === undefined
+              ? undefined
+              : assignment.paymentDueDate
+                ? new Date(assignment.paymentDueDate)
+                : null,
+        });
+      }
+    }
+
     const influencer = await prisma.influencer.update({
       where: { id },
       data: influencerData,
     });
 
     if (Array.isArray(projectAssignments)) {
-      const assignments = projectAssignments.map((assignment: any) => ({
-        projectId: assignment.projectId,
-        fee: Number(assignment.fee) || 0,
-        paymentStatus: normalizeStatus(assignment.paymentStatus),
-        paymentDueDate: assignment.paymentDueDate ? new Date(assignment.paymentDueDate) : null,
-      }));
+      const existing = await prisma.projectInfluencer.findMany({
+        where: { influencerId: id },
+        select: { projectId: true, paymentDate: true },
+      });
+      const paidProjectIds = new Set(
+        existing.filter((pi) => pi.paymentDate).map((pi) => pi.projectId)
+      );
+      const now = new Date();
 
       const projectIds = assignments.map((assignment) => assignment.projectId);
 
@@ -112,10 +140,17 @@ export async function PATCH(
               fee: assignment.fee,
               paymentStatus: assignment.paymentStatus,
               paymentDueDate: assignment.paymentDueDate,
+              // 완료로 바뀌었는데 정산일이 없으면 오늘로 기록 (기존 정산일은 유지)
+              ...(assignment.paymentStatus === "COMPLETED" &&
+                !paidProjectIds.has(assignment.projectId) && { paymentDate: now }),
             },
             create: {
-              ...assignment,
+              projectId: assignment.projectId,
               influencerId: id,
+              fee: assignment.fee,
+              paymentStatus: assignment.paymentStatus,
+              paymentDueDate: assignment.paymentDueDate ?? null,
+              paymentDate: assignment.paymentStatus === "COMPLETED" ? now : null,
             },
           })
         ),

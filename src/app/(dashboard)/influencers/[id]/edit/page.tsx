@@ -15,8 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { normalizeSettlementStatus, type SettlementStatus } from "@/lib/settlement-status";
 
-type SettlementStatus = "pending" | "in_progress" | "completed";
 
 type ProjectAssignment = {
   projectId: string;
@@ -48,13 +48,6 @@ interface InfluencerResponse {
     paymentStatus: string;
   }>;
 }
-
-const normalizeStatus = (status?: string | null): SettlementStatus => {
-  const value = (status || "").toLowerCase();
-  if (value === "completed") return "completed";
-  if (value === "in_progress" || value === "requested") return "in_progress";
-  return "pending";
-};
 
 export default function EditInfluencerPage() {
   const router = useRouter();
@@ -106,7 +99,7 @@ export default function EditInfluencerPage() {
           (data.projectInfluencers || []).map((pi) => ({
             projectId: pi.project.id,
             fee: String(pi.fee ?? ""),
-            paymentStatus: normalizeStatus(pi.paymentStatus),
+            paymentStatus: normalizeSettlementStatus(pi.paymentStatus),
           }))
         );
       } catch (error) {
@@ -162,7 +155,7 @@ export default function EditInfluencerPage() {
   };
 
   const addAssignmentRow = () => {
-    setProjectAssignments((prev) => [...prev, { projectId: "", fee: "", paymentStatus: "pending" }]);
+    setProjectAssignments((prev) => [...prev, { projectId: "", fee: "", paymentStatus: "PENDING" }]);
   };
 
   const removeAssignmentRow = (index: number) => {
@@ -458,9 +451,9 @@ export default function EditInfluencerPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="pending">예정</SelectItem>
-                            <SelectItem value="in_progress">진행 중</SelectItem>
-                            <SelectItem value="completed">완료</SelectItem>
+                            <SelectItem value="PENDING">예정</SelectItem>
+                            <SelectItem value="REQUESTED">진행 중</SelectItem>
+                            <SelectItem value="COMPLETED">완료</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>

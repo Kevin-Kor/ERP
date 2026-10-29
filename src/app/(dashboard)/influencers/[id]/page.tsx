@@ -37,6 +37,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { formatCurrency, formatDate, INFLUENCER_CATEGORIES } from "@/lib/utils";
+import { normalizeSettlementStatus, type SettlementStatus } from "@/lib/settlement-status";
 
 interface Influencer {
   id: string;
@@ -66,14 +67,6 @@ interface Influencer {
   }>;
 }
 
-type SettlementStatus = "pending" | "in_progress" | "completed";
-
-const normalizeStatus = (status?: string): SettlementStatus => {
-  const value = (status || "").toLowerCase();
-  if (value === "completed") return "completed";
-  if (value === "in_progress" || value === "requested") return "in_progress";
-  return "pending";
-};
 
 export default function InfluencerDetailPage() {
   const params = useParams();
@@ -84,9 +77,9 @@ export default function InfluencerDetailPage() {
   const [updatingSettlementId, setUpdatingSettlementId] = useState<string | null>(null);
 
   const statusOptions: { value: SettlementStatus; label: string }[] = [
-    { value: "pending", label: "예정" },
-    { value: "in_progress", label: "진행 중" },
-    { value: "completed", label: "완료" },
+    { value: "PENDING", label: "예정" },
+    { value: "REQUESTED", label: "진행 중" },
+    { value: "COMPLETED", label: "완료" },
   ];
 
   const fetchInfluencer = useCallback(async () => {
@@ -133,7 +126,7 @@ export default function InfluencerDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentStatus: newStatus,
-          paymentDate: newStatus === "completed" ? new Date().toISOString() : null,
+          paymentDate: newStatus === "COMPLETED" ? new Date().toISOString() : null,
         }),
       });
 
@@ -441,7 +434,7 @@ export default function InfluencerDetailPage() {
                         <TableCell className="font-medium">{formatCurrency(pi.fee)}</TableCell>
                         <TableCell className="w-[180px]">
                           <Select
-                            value={normalizeStatus(pi.paymentStatus)}
+                            value={normalizeSettlementStatus(pi.paymentStatus)}
                             onValueChange={(value) => handleSettlementStatusChange(pi.id, value as SettlementStatus)}
                           >
                             <SelectTrigger disabled={updatingSettlementId === pi.id}>

@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/api-auth";
 import { z } from "zod";
+import { normalizeSettlementStatus, settlementStatusInput } from "@/lib/settlement-status";
 
 const collaboratorSchema = z.object({
     influencerId: z.string().min(1),
     fee: z.number().min(0),
-    paymentStatus: z.string().optional().default("pending"),
+    paymentStatus: settlementStatusInput,
     paymentDueDate: z.string().nullable().optional(),
     paymentDate: z.string().nullable().optional(),
 });
 
-const normalizeStatus = (status?: string) => {
-    const value = (status || "").toLowerCase();
-    if (value === "completed") return "completed";
-    if (value === "in_progress" || value === "requested") return "in_progress";
-    return "pending";
-};
+// undefined면 기존 값을 유지하고(undefined 반환), null/""이면 비운다
+function toDateUpdate(value: string | null | undefined): Date | null | undefined {
+    if (value === undefined) return undefined;
+    return value ? new Date(value) : null;
+}
 
 export async function POST(
     request: NextRequest,
@@ -28,26 +28,37 @@ export async function POST(
     try {
         const { id } = await params;
         const body = await request.json();
-        const parsed = z
+        const { collaborators } = z
             .object({
                 collaborators: z.array(collaboratorSchema),
             })
             .parse(body);
 
-        const collaborators = parsed.collaborators.map((collaborator) => ({
-            ...collaborator,
-            paymentStatus: normalizeStatus(collaborator.paymentStatus),
-        }));
-
         const existingInfluencers = await prisma.projectInfluencer.findMany({
             where: { projectId: id },
-            select: { id: true, influencerId: true },
+            select: { id: true, influencerId: true, paymentDate: true },
         });
+        const existingByInfluencer = new Map(
+            existingInfluencers.map((existing) => [existing.influencerId, existing])
+        );
 
         const incomingIds = new Set(collaborators.map((c) => c.influencerId));
+        const now = new Date();
 
-        const upserts = collaborators.map((collaborator) =>
-            prisma.projectInfluencer.upsert({
+        const upserts = collaborators.map((collaborator) => {
+            const existing = existingByInfluencer.get(collaborator.influencerId);
+            let paymentDate = toDateUpdate(collaborator.paymentDate);
+            // 화면은 정산일을 보내지 않는다. 완료로 바뀌었는데 정산일이 없을 때만 오늘로 기록
+            // (예전에는 저장할 때마다 정산일이 null로 지워졌다)
+            if (
+                paymentDate === undefined &&
+                collaborator.paymentStatus === "COMPLETED" &&
+                !existing?.paymentDate
+            ) {
+                paymentDate = now;
+            }
+
+            return prisma.projectInfluencer.upsert({
                 where: {
                     projectId_influencerId: {
                         projectId: id,
@@ -57,27 +68,19 @@ export async function POST(
                 update: {
                     fee: collaborator.fee,
                     paymentStatus: collaborator.paymentStatus,
-                    paymentDueDate: collaborator.paymentDueDate
-                        ? new Date(collaborator.paymentDueDate)
-                        : null,
-                    paymentDate: collaborator.paymentDate
-                        ? new Date(collaborator.paymentDate)
-                        : null,
+                    paymentDueDate: toDateUpdate(collaborator.paymentDueDate),
+                    paymentDate,
                 },
                 create: {
                     projectId: id,
                     influencerId: collaborator.influencerId,
                     fee: collaborator.fee,
                     paymentStatus: collaborator.paymentStatus,
-                    paymentDueDate: collaborator.paymentDueDate
-                        ? new Date(collaborator.paymentDueDate)
-                        : null,
-                    paymentDate: collaborator.paymentDate
-                        ? new Date(collaborator.paymentDate)
-                        : null,
+                    paymentDueDate: toDateUpdate(collaborator.paymentDueDate) ?? null,
+                    paymentDate: paymentDate ?? null,
                 },
-            })
-        );
+            });
+        });
 
         const deletions = existingInfluencers
             .filter((existing) => !incomingIds.has(existing.influencerId))
@@ -104,7 +107,7 @@ export async function POST(
             projectInfluencers:
                 project?.ProjectInfluencer.map((pi) => ({
                     ...pi,
-                    paymentStatus: normalizeStatus(pi.paymentStatus),
+                    paymentStatus: normalizeSettlementStatus(pi.paymentStatus),
                     influencer: pi.Influencer,
                 })) || [],
         });

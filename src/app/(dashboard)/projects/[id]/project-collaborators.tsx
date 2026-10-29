@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Instagram, Loader2, PlusCircle, Save, Trash2 } from "lucide-react";
+import { normalizeSettlementStatus, type SettlementStatus } from "@/lib/settlement-status";
 
 interface ProjectInfluencerEntry {
     id: string;
@@ -39,8 +40,6 @@ interface CollaboratorsProps {
     initialCollaborators: ProjectInfluencerEntry[];
 }
 
-type SettlementStatus = "pending" | "in_progress" | "completed";
-
 type CollaboratorRow = {
     influencerId: string;
     fee: number;
@@ -49,19 +48,12 @@ type CollaboratorRow = {
     influencer?: InfluencerOption;
 };
 
-const normalizeStatus = (status?: string): SettlementStatus => {
-    const value = (status || "").toLowerCase();
-    if (value === "completed") return "completed";
-    if (value === "in_progress" || value === "requested") return "in_progress";
-    return "pending";
-};
-
 export function ProjectCollaborators({ projectId, initialCollaborators }: CollaboratorsProps) {
     const [collaborators, setCollaborators] = useState<CollaboratorRow[]>(
         initialCollaborators.map((collaborator) => ({
             influencerId: collaborator.influencer.id,
             fee: collaborator.fee,
-            paymentStatus: normalizeStatus(collaborator.paymentStatus),
+            paymentStatus: normalizeSettlementStatus(collaborator.paymentStatus),
             paymentDueDate: collaborator.paymentDueDate?.split("T")[0] || "",
             influencer: collaborator.influencer,
         }))
@@ -90,18 +82,18 @@ export function ProjectCollaborators({ projectId, initialCollaborators }: Collab
     }, []);
 
     const statusOptions: { value: SettlementStatus; label: string }[] = [
-        { value: "pending", label: "예정" },
-        { value: "in_progress", label: "진행 중" },
-        { value: "completed", label: "완료" },
+        { value: "PENDING", label: "예정" },
+        { value: "REQUESTED", label: "진행 중" },
+        { value: "COMPLETED", label: "완료" },
     ];
 
     const totals = useMemo(() => {
-        const pendingCount = collaborators.filter((c) => c.paymentStatus === "pending").length;
-        const inProgressCount = collaborators.filter((c) => c.paymentStatus === "in_progress").length;
-        const completedCount = collaborators.filter((c) => c.paymentStatus === "completed").length;
+        const pendingCount = collaborators.filter((c) => c.paymentStatus === "PENDING").length;
+        const inProgressCount = collaborators.filter((c) => c.paymentStatus === "REQUESTED").length;
+        const completedCount = collaborators.filter((c) => c.paymentStatus === "COMPLETED").length;
         const totalFee = collaborators.reduce((sum, c) => sum + (Number(c.fee) || 0), 0);
         const completedFee = collaborators
-            .filter((c) => c.paymentStatus === "completed")
+            .filter((c) => c.paymentStatus === "COMPLETED")
             .reduce((sum, c) => sum + (Number(c.fee) || 0), 0);
         return { pendingCount, inProgressCount, completedCount, totalFee, completedFee };
     }, [collaborators]);
@@ -109,7 +101,7 @@ export function ProjectCollaborators({ projectId, initialCollaborators }: Collab
     const addRow = () => {
         setCollaborators((prev) => [
             ...prev,
-            { influencerId: "", fee: 0, paymentStatus: "pending" as SettlementStatus, paymentDueDate: "" },
+            { influencerId: "", fee: 0, paymentStatus: "PENDING" as SettlementStatus, paymentDueDate: "" },
         ]);
     };
 
@@ -165,7 +157,7 @@ export function ProjectCollaborators({ projectId, initialCollaborators }: Collab
                 (data.projectInfluencers || []).map((pi: any) => ({
                     influencerId: pi.influencer.id,
                     fee: pi.fee,
-                    paymentStatus: normalizeStatus(pi.paymentStatus),
+                    paymentStatus: normalizeSettlementStatus(pi.paymentStatus),
                     paymentDueDate: pi.paymentDueDate ? new Date(pi.paymentDueDate).toISOString().split("T")[0] : "",
                     influencer: pi.influencer,
                 }))

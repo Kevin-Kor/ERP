@@ -30,6 +30,7 @@ import {
 import { formatCurrency, formatDate, STATUS_LABELS, PLATFORM_OPTIONS, CONTENT_TYPE_OPTIONS, VIDEO_STYLE_OPTIONS } from "@/lib/utils";
 import { DeleteProjectButton } from "./delete-project-button";
 import { ProjectCollaborators } from "./project-collaborators";
+import { normalizeSettlementStatus } from "@/lib/settlement-status";
 
 interface PageProps {
     params: Promise<{ id: string }>;
@@ -105,7 +106,7 @@ export default async function ProjectDetailPage({ params }: PageProps) {
 
     const totalInfluencerCost = project.ProjectInfluencer.reduce((sum, pi) => sum + pi.fee, 0);
     const paidAmount = project.ProjectInfluencer
-        .filter(pi => (pi.paymentStatus || "").toLowerCase() === "completed")
+        .filter(pi => normalizeSettlementStatus(pi.paymentStatus) === "COMPLETED")
         .reduce((sum, pi) => sum + pi.fee, 0);
 
     return (

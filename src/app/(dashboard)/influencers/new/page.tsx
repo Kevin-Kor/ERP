@@ -40,8 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type SettlementStatus = "pending" | "in_progress" | "completed";
+import type { SettlementStatus } from "@/lib/settlement-status";
 
 interface ProjectOption {
   id: string;
@@ -55,7 +54,7 @@ export default function NewInfluencerPage() {
   const [projectOptions, setProjectOptions] = useState<ProjectOption[]>([]);
   const [projectAssignments, setProjectAssignments] = useState<
     { projectId: string; fee: string; paymentStatus: SettlementStatus }[]
-  >([{ projectId: "", fee: "", paymentStatus: "pending" }]);
+  >([{ projectId: "", fee: "", paymentStatus: "PENDING" }]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -159,7 +158,7 @@ export default function NewInfluencerPage() {
   const addAssignmentRow = () => {
     setProjectAssignments((prev) => [
       ...prev,
-      { projectId: "", fee: "", paymentStatus: "pending" },
+      { projectId: "", fee: "", paymentStatus: "PENDING" },
     ]);
   };
 
@@ -430,9 +429,9 @@ export default function NewInfluencerPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="pending">예정</SelectItem>
-                            <SelectItem value="in_progress">진행 중</SelectItem>
-                            <SelectItem value="completed">완료</SelectItem>
+                            <SelectItem value="PENDING">예정</SelectItem>
+                            <SelectItem value="REQUESTED">진행 중</SelectItem>
+                            <SelectItem value="COMPLETED">완료</SelectItem>
                           </SelectContent>
                         </Select>
                       </TableCell>
