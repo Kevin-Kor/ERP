@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 import { z } from "zod";
 
 const projectSchema = z.object({
@@ -17,6 +18,9 @@ const projectSchema = z.object({
 
 // GET - List all projects
 export async function GET(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -84,6 +88,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new project
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const validatedData = projectSchema.parse(body);

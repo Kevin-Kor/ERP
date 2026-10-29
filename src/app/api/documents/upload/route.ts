@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 // Allowed file types
@@ -29,6 +30,9 @@ const ALLOWED_TYPES = [
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;

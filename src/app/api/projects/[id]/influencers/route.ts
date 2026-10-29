@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 import { z } from "zod";
 
 const collaboratorSchema = z.object({
@@ -21,6 +22,9 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
+    const auth = await requireSession();
+    if (auth.response) return auth.response;
+
     try {
         const { id } = await params;
         const body = await request.json();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 
 const normalizeStatus = (status?: string) => {
   const value = (status || "").toLowerCase();
@@ -12,6 +13,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { id } = await params;
     const influencer = await prisma.influencer.findUnique({
@@ -64,6 +68,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -129,6 +136,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { id } = await params;
     await prisma.influencer.delete({

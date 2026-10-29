@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 
 const normalizeStatus = (status?: string) => {
   const value = (status || "").toLowerCase();
@@ -9,6 +10,9 @@ const normalizeStatus = (status?: string) => {
 };
 
 export async function GET(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");

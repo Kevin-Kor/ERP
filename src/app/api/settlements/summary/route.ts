@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 
 type StatusKey = "pending" | "in_progress" | "completed";
 
@@ -11,6 +12,9 @@ const normalizeStatus = (status?: string): StatusKey => {
 };
 
 export async function GET(request: NextRequest) {
+    const auth = await requireSession();
+    if (auth.response) return auth.response;
+
     try {
         const { searchParams } = new URL(request.url);
         const month = searchParams.get("month"); // YYYY-MM format

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requireSession } from "@/lib/api-auth";
 
 // GET - List all influencers
 export async function GET(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -59,6 +63,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Create new influencer
 export async function POST(request: NextRequest) {
+  const auth = await requireSession();
+  if (auth.response) return auth.response;
+
   try {
     const body = await request.json();
     const { projectAssignments = [], ...influencerData } = body;
