@@ -113,6 +113,8 @@ export default function CalendarPage() {
         invalid_request: "잘못된 요청입니다.",
         token_error: "인증 토큰을 받지 못했습니다.",
         auth_failed: "인증에 실패했습니다.",
+        invalid_state: "연결 요청이 만료되었거나 올바르지 않습니다. 다시 연결해주세요.",
+        not_configured: "Google Calendar 연동이 설정되지 않았습니다.",
       };
       toast({
         title: "연결 실패",

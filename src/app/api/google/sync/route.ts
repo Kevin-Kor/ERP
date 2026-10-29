@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   GoogleCalendarSync,
+  createRandomToken,
   erpEventToGoogleEvent,
   googleEventToErpEvent,
   refreshAccessToken
@@ -76,6 +77,26 @@ async function getValidAccessToken(userId: string, user?: GoogleTokenState) {
   };
 }
 
+// 등록된 푸시 알림 채널을 중지한다. 이미 만료된 채널이면 Google이 오류를 주므로 무시한다.
+async function stopWatchChannel(
+  sync: GoogleCalendarSync,
+  channel: { googleChannelId: string | null; googleChannelResourceId: string | null } | null
+) {
+  if (!channel?.googleChannelId || !channel.googleChannelResourceId) return;
+  try {
+    await sync.stopWatch(channel.googleChannelId, channel.googleChannelResourceId);
+  } catch (error) {
+    console.warn("Failed to stop Google watch channel (may be expired):", error);
+  }
+}
+
+const CLEARED_CHANNEL = {
+  googleChannelId: null,
+  googleChannelResourceId: null,
+  googleChannelToken: null,
+  googleChannelExpiry: null,
+};
+
 // GET - Get sync status
 export async function GET(request: NextRequest) {
   try {
@@ -95,10 +116,15 @@ export async function GET(request: NextRequest) {
         googleAccessToken: true,
         googleRefreshToken: true,
         googleTokenExpiry: true,
+        googleChannelId: true,
+        googleChannelExpiry: true,
       },
     });
 
     const tokenData = await getValidAccessToken(session.user.id, user);
+    const autoSyncEnabled =
+      !!user?.googleChannelId &&
+      (!user.googleChannelExpiry || user.googleChannelExpiry.getTime() > Date.now());
     const isConnected = !!tokenData;
 
     // Get last synced events count
@@ -113,6 +139,7 @@ export async function GET(request: NextRequest) {
       connected: isConnected,
       calendarId: tokenData?.calendarId || user?.googleCalendarId || "primary",
       syncedEventsCount: syncedCount,
+      autoSyncEnabled,
     });
   } catch (error) {
     if (error instanceof Error && error.message === "Google Calendar not configured") {
@@ -313,34 +340,60 @@ export async function PUT(request: NextRequest) {
 
     const sync = new GoogleCalendarSync(tokenData.accessToken, tokenData.calendarId);
     const webhookUrl = `${process.env.NEXTAUTH_URL}/api/google/webhook`;
-    const channelId = `erp-calendar-${session.user.id}-${Date.now()}`;
 
-    if (enabled) {
-      try {
-        // Start watching calendar
-        const watchResponse = await sync.watchCalendar(webhookUrl, channelId);
-        
-        // Store channel info for later cleanup (optional: could store in DB)
-        console.log("Webhook registered:", watchResponse);
-        
-        return NextResponse.json({ 
-          success: true, 
-          message: "Auto-sync enabled",
-          expiration: watchResponse.expiration,
-        });
-      } catch (err: any) {
-        console.error("Watch calendar error:", err);
-        return NextResponse.json(
-          { error: err.message || "Failed to enable auto-sync" },
-          { status: 500 }
-        );
-      }
-    } else {
-      // For now, just acknowledge - stopping requires resourceId
-      return NextResponse.json({ 
-        success: true, 
-        message: "Auto-sync disabled" 
+    // 이전 채널이 있으면 먼저 중지 (중복 알림 방지)
+    const currentChannel = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { googleChannelId: true, googleChannelResourceId: true },
+    });
+    await stopWatchChannel(sync, currentChannel);
+
+    if (!enabled) {
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: CLEARED_CHANNEL,
       });
+      return NextResponse.json({
+        success: true,
+        message: "Auto-sync disabled"
+      });
+    }
+
+    // 채널 ID는 사용자 ID를 드러내지 않는 임의 값, 토큰은 웹훅 검증용 비밀 값
+    const channelId = `erp-calendar-${crypto.randomUUID()}`;
+    const channelToken = createRandomToken();
+
+    try {
+      // Start watching calendar
+      const watchResponse = await sync.watchCalendar(webhookUrl, channelId, channelToken);
+
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          googleChannelId: channelId,
+          googleChannelResourceId: watchResponse.resourceId ?? null,
+          googleChannelToken: channelToken,
+          googleChannelExpiry: watchResponse.expiration
+            ? new Date(Number(watchResponse.expiration))
+            : null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Auto-sync enabled",
+        expiration: watchResponse.expiration,
+      });
+    } catch (err: unknown) {
+      console.error("Watch calendar error:", err);
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: CLEARED_CHANNEL,
+      });
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to enable auto-sync" },
+        { status: 500 }
+      );
     }
   } catch (error) {
     if (error instanceof Error && error.message === "Google Calendar not configured") {
@@ -367,6 +420,21 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // 자동 동기화 채널이 있으면 토큰을 지우기 전에 중지한다 (실패해도 연결 해제는 진행)
+    const channel = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { googleChannelId: true, googleChannelResourceId: true },
+    });
+    if (channel?.googleChannelId) {
+      const tokenData = await getValidAccessToken(session.user.id);
+      if (tokenData) {
+        await stopWatchChannel(
+          new GoogleCalendarSync(tokenData.accessToken, tokenData.calendarId),
+          channel
+        );
+      }
+    }
+
     await prisma.user.update({
       where: { id: session.user.id },
       data: {
@@ -375,6 +443,7 @@ export async function DELETE(request: NextRequest) {
         googleTokenExpiry: null,
         googleCalendarId: null,
         googleSyncEnabled: false,
+        ...CLEARED_CHANNEL,
       },
     });
 

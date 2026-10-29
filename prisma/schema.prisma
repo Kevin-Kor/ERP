@@ -186,6 +186,11 @@ model User {
   googleTokenExpiry  DateTime? // Token expiry time
   googleCalendarId   String? // Selected Google Calendar ID
   googleSyncEnabled  Boolean         @default(false) // Enable/disable sync
+  // Google 푸시 알림(watch) 채널. 웹훅은 채널 ID로 사용자를 찾고 토큰을 대조한다.
+  googleChannelId         String?   @unique
+  googleChannelResourceId String?
+  googleChannelToken      String?
+  googleChannelExpiry     DateTime?
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   Activity           Activity[]

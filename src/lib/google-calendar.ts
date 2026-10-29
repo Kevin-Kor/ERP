@@ -1,5 +1,22 @@
+import crypto from "crypto";
 import { google, calendar_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+
+// OAuth state(CSRF 방지용 일회성 값)를 담는 쿠키. 콜백 경로에서만 전송된다.
+export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
+export const GOOGLE_OAUTH_STATE_COOKIE_PATH = "/api/google/callback";
+
+// 추측 불가능한 임의 문자열 (OAuth state, 웹훅 채널 토큰용)
+export function createRandomToken(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+// 길이가 달라도 예외 없이 비교하는 상수 시간 문자열 비교
+export function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
 
 // Google OAuth2 client configuration
 export function getOAuth2Client(): OAuth2Client {
@@ -237,13 +254,15 @@ export class GoogleCalendarSync {
   }
 
   // Set up webhook for push notifications
-  async watchCalendar(webhookUrl: string, channelId: string) {
+  // token은 Google이 알림마다 X-Goog-Channel-Token 헤더로 돌려주며, 웹훅에서 이를 검증한다.
+  async watchCalendar(webhookUrl: string, channelId: string, token: string) {
     const response = await this.calendar.events.watch({
       calendarId: this.calendarId,
       requestBody: {
         id: channelId,
         type: "web_hook",
         address: webhookUrl,
+        token,
         // Expire in 7 days (max allowed)
         expiration: String(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
