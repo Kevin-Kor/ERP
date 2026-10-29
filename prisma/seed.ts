@@ -1,19 +1,40 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const MIN_PASSWORD_LENGTH = 10;
+
+// 시드 계정 비밀번호는 코드에 두지 않고 환경변수로만 받는다.
+function readSeedPassword(name: string, required: boolean): string | null {
+  const value = process.env[name];
+  if (!value) {
+    if (required) {
+      throw new Error(`${name} 환경변수가 필요합니다. .env.example을 참고하세요.`);
+    }
+    return null;
+  }
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`${name}은(는) ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.`);
+  }
+  return value;
+}
+
 async function main() {
   console.log("🌱 Seeding database...");
 
-  // Create admin user
-  const hashedPassword = await bcrypt.hash("admin123", 12);
-  
+  const adminEmail = process.env.SEED_ADMIN_EMAIL || "admin@agency.com";
+  const adminPassword = readSeedPassword("SEED_ADMIN_PASSWORD", true)!;
+
+  // Create admin user (이미 있으면 비밀번호를 덮어쓰지 않는다)
+  const hashedPassword = await bcrypt.hash(adminPassword, 12);
+
   const admin = await prisma.user.upsert({
-    where: { email: "admin@agency.com" },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: "admin@agency.com",
+      email: adminEmail,
       password: hashedPassword,
       name: "관리자",
       role: "ADMIN",
@@ -22,21 +43,23 @@ async function main() {
 
   console.log("✅ Admin user created:", admin.email);
 
-  // Create member user
-  const memberPassword = await bcrypt.hash("member123", 12);
-  
-  const member = await prisma.user.upsert({
-    where: { email: "member@agency.com" },
-    update: {},
-    create: {
-      email: "member@agency.com",
-      password: memberPassword,
-      name: "팀원",
-      role: "MEMBER",
-    },
-  });
+  // Create member user (SEED_MEMBER_PASSWORD가 있을 때만)
+  const memberPassword = readSeedPassword("SEED_MEMBER_PASSWORD", false);
+  if (memberPassword) {
+    const memberEmail = process.env.SEED_MEMBER_EMAIL || "member@agency.com";
+    const member = await prisma.user.upsert({
+      where: { email: memberEmail },
+      update: {},
+      create: {
+        email: memberEmail,
+        password: await bcrypt.hash(memberPassword, 12),
+        name: "팀원",
+        role: "MEMBER",
+      },
+    });
 
-  console.log("✅ Member user created:", member.email);
+    console.log("✅ Member user created:", member.email);
+  }
 
   // 현재 날짜 기준 설정
   const today = new Date();
